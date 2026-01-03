@@ -1,0 +1,1288 @@
+__id__ = "AniList_co"
+__name__ = "AniList.co"
+__description__ = "Ищет аниме через anilist.co и отправляет в чат. Доступна гибкая настройка"
+__author__ = "@fakefeelinger"
+__version__ = "0.0.1600"
+__icon__ = "Islite_plugins/0"
+__min_version__ = "12.0.1"
+
+import re
+import random
+import requests
+import json
+from typing import Any, Optional
+from difflib import SequenceMatcher
+from android_utils import run_on_ui_thread
+from base_plugin import BasePlugin, HookResult, HookStrategy
+from client_utils import get_last_fragment, run_on_queue, send_message
+from markdown_utils import parse_markdown
+from ui.alert import AlertDialogBuilder
+from ui.settings import Header, Input, Switch, Divider, Selector, Text
+from ui.bulletin import BulletinHelper
+
+
+def escape_underscore(text: str) -> str:
+    return text.replace("_", "\\_")
+
+
+class Anilist_Co(BasePlugin):
+
+    def on_plugin_load(self):
+        self.log("AniList.co 0.0.1600 загружен")
+        self.add_on_send_message_hook(priority=100)
+
+    ANILIST_GRAPHQL_URL = "https://graphql.anilist.co"
+    SHIKIMORI_API_ANIMES = "https://shikimori.one/api/animes"
+    GOOGLE_TRANSLATE_URL = "https://translate.googleapis.com/translate_a/single"
+    LIBRE_TRANSLATE_URL = "https://libretranslate.de/translate"
+
+    COUNTRY_BASE = {"JP": "Япония", "KR": "Корея", "CN": "Китай"}
+    COUNTRY_FLAG = {"JP": "🇯🇵", "KR": "🇰🇷", "CN": "🇨🇳"}
+    REVERSE_COUNTRY_MAP = {v.lower(): k for k, v in COUNTRY_BASE.items()}
+
+    SEASON_MAP = {"WINTER": "зима", "SPRING": "весна", "SUMMER": "лето", "FALL": "осень"}
+    REVERSE_SEASON_MAP = {v.lower(): k for k, v in SEASON_MAP.items()}
+
+    FORMAT_MAP = {"TV": "сериал","TV_SHORT": "короткий сериал","MOVIE": "фильм","OVA": "ova","ONA": "ona","SPECIAL": "спешл","MUSIC": "музыкальный"}
+    REVERSE_FORMAT_MAP = {v.lower(): k for k, v in FORMAT_MAP.items()}
+    REVERSE_FORMAT_MAP.update({v.lower().replace(" ", "_"): k for k, v in FORMAT_MAP.items()})
+
+    DEMOGRAPHIC_MAP = {"Shounen": "сёнэн","Shonen": "сёнэн","Shoujo": "сёдзё","Shojo": "сёдзё","Seinen": "сэйнэн","Josei": "дзёсэй","Kids": "детский"}
+
+    SEARCH_QUERY = """
+query ($search: String, $format: MediaFormat) {
+    Page(perPage: 1) {
+        media(search: $search, type: ANIME, format: $format, sort: SEARCH_MATCH) {
+            id title { romaji english native userPreferred } synonyms
+            countryOfOrigin season seasonYear format genres
+            tags { name rank isMediaSpoiler }
+        }
+    }
+}
+"""
+
+    MEDIA_QUERY = """
+query ($id: Int) {
+    Media(id: $id, type: ANIME) {
+        id title { romaji english native userPreferred } synonyms
+        countryOfOrigin season seasonYear format genres
+        tags { name rank isMediaSpoiler }
+    }
+}
+"""
+
+    MEDIA_BY_MAL_QUERY = """
+query ($idMal: Int) {
+    Media(idMal: $idMal, type: ANIME) {
+        id title { romaji english native userPreferred } synonyms
+        countryOfOrigin season seasonYear format genres
+        tags { name rank isMediaSpoiler }
+    }
+}
+"""
+
+    CRITERIA_QUERY = """
+query ($perPage: Int) {
+    Page(perPage: $perPage) {
+        media(type: ANIME, sort: POPULARITY_DESC) {
+            id title { romaji english native userPreferred } synonyms
+            countryOfOrigin season seasonYear format genres
+            tags { name rank isMediaSpoiler }
+        }
+    }
+}
+"""
+
+    def __init__(self):
+        super().__init__()
+        self.commands = {"search": [], "cover": [], "random": []}
+        self.translate_cache = {}
+        self.search_cache = {}
+        self.last_successful_original = ""
+        self.min_id = 1
+        self.max_id = 700000
+        self.random_max_attempts = 10
+        self.tag_min_rank = 20
+        self.tag_max_count = 0
+        self.genre_max_count = 0
+        self.random_top_limit = 50
+        self.direct_id_source = 0
+        self.random_source = 0
+        self.show_link_in_full = False
+        self.show_shikimori_link = False
+        self.hide_cover_preview = False
+        self.use_fallback_translator = True
+        self.alert_manager = AlertManager()
+        self.genre_translations = {}
+        self.additional_genre_translations = {}
+        self.tag_translations = {}
+        self.additional_tag_translations = {}
+        self.shikimori_genres_map = {}
+        self.ordered_genre_keys = []
+        self.ordered_tag_keys = []
+        self.reverse_shikimori_genre_map = {}
+
+    def update_settings(self):
+        try:
+            self.commands["search"] = [c.strip().lower() for c in (self.get_setting("search_commands", ".а, .аниме, .a, .anime") or "").split(",") if c.strip()]
+            self.commands["cover"] = [c.strip().lower() for c in (self.get_setting("cover_commands", ".с, .ссылка, .л, .линк, .l, .link") or "").split(",") if c.strip()]
+            self.commands["random"] = [c.strip().lower() for c in (self.get_setting("random_commands", ".р, .рандом, .r, .random") or "").split(",") if c.strip()]
+            self.translate_ru_to_en = bool(self.get_setting("translate_ru_to_en", True))
+            self.use_fallback_translator = bool(self.get_setting("use_fallback_translator", True))
+            self.use_shikimori = bool(self.get_setting("use_shikimori", True))
+            self.direct_id_source = int(self.get_setting("direct_id_source", 0))
+            self.random_source = int(self.get_setting("random_source", 0))
+            try:
+                self.shikimori_limit = max(1, min(30, int(self.get_setting("shikimori_limit", "30") or "30")))
+            except:
+                self.shikimori_limit = 30
+            try:
+                self.min_id = max(1, int(self.get_setting("min_id", "1") or "1"))
+                self.max_id = max(self.min_id, int(self.get_setting("max_id", "700000") or "700000"))
+            except:
+                self.min_id = 1
+                self.max_id = 700000
+            try:
+                self.random_max_attempts = max(1, int(self.get_setting("random_max_attempts", "10") or "10"))
+                self.tag_min_rank = int(self.get_setting("tag_min_rank", "20") or "20")
+                self.random_top_limit = max(1, min(50, int(self.get_setting("random_top_limit", "50") or "50")))
+                self.genre_max_count = int(self.get_setting("genre_max_count", "0") or "0")
+                self.tag_max_count = int(self.get_setting("tag_max_count", "0") or "0")
+            except:
+                pass
+            self.hide_cover_preview = bool(self.get_setting("hide_cover_preview", False))
+            self.show_link_in_full = bool(self.get_setting("show_link_in_full", False))
+            self.show_shikimori_link = bool(self.get_setting("show_shikimori_link", False))
+            self.anilist_link_text = self.get_setting("anilist_link_text", "AniList").strip() or "AniList"
+            self.shikimori_link_text = self.get_setting("shikimori_link_text", "Shikimori").strip() or "Shikimori"
+            self.links_format = int(self.get_setting("links_format", 0))
+            self.underscore_format = bool(self.get_setting("underscore_format", True))
+            self.show_anime_label = bool(self.get_setting("show_anime_label", True))
+            self.hash_anime = bool(self.get_setting("hash_anime", True))
+            self.hash_country = bool(self.get_setting("hash_country", True))
+            self.hash_format = bool(self.get_setting("hash_format", True))
+            self.hash_demographic = bool(self.get_setting("hash_demographic", True))
+            self.hash_genres_main = bool(self.get_setting("hash_genres_main", True))
+            self.hash_genres_add = bool(self.get_setting("hash_genres_add", True))
+            self.hash_genres_non = bool(self.get_setting("hash_genres_non", True))
+            self.hash_tags_main = bool(self.get_setting("hash_tags_main", True))
+            self.hash_tags_add = bool(self.get_setting("hash_tags_add", True))
+            self.hash_tags_non = bool(self.get_setting("hash_tags_non", True))
+            self.underscore_genres_main = bool(self.get_setting("underscore_genres_main", True))
+            self.underscore_genres_add = bool(self.get_setting("underscore_genres_add", True))
+            self.underscore_genres_non = bool(self.get_setting("underscore_genres_non", True))
+            self.underscore_tags_main = bool(self.get_setting("underscore_tags_main", True))
+            self.underscore_tags_add = bool(self.get_setting("underscore_tags_add", True))
+            self.underscore_tags_non = bool(self.get_setting("underscore_tags_non", True))
+            self.show_country = bool(self.get_setting("show_country", True))
+            self.show_season_year = bool(self.get_setting("show_season_year", True))
+            self.show_format = bool(self.get_setting("show_format", True))
+            self.show_demographic = bool(self.get_setting("show_demographic", True))
+            self.show_genres = bool(self.get_setting("show_genres", True))
+            self.show_additional_genres = bool(self.get_setting("show_additional_genres", True))
+            self.show_non_translated_genres = bool(self.get_setting("show_non_translated_genres", False))
+            self.show_tags = bool(self.get_setting("show_tags", True))
+            self.show_additional_tags = bool(self.get_setting("show_additional_tags", True))
+            self.show_non_translated_tags = bool(self.get_setting("show_non_translated_tags", False))
+
+            DEFAULT_MAPPING_URL = "https://raw.githubusercontent.com/Islite/mapping-genre-tag-list-ExteraGram/refs/heads/main/mapping_all_list.json"
+
+            def safe_load_mapping(key: str) -> dict:
+                raw = self.get_setting(key, DEFAULT_MAPPING_URL).strip()
+                if raw.startswith(("http://", "https://")):
+                    try:
+                        resp = requests.get(raw, timeout=8)
+                        resp.raise_for_status()
+                        data = resp.json()
+
+                        normalized = {}
+                        sub_map = {
+                            "genre_translations": "main_genres",
+                            "additional_genre_translations": "additional_genres",
+                            "tag_translations": "main_tags",
+                            "additional_tag_translations": "additional_tags",
+                            "shikimori_genres_map": "shikimori",
+                        }
+                        sub_key = sub_map.get(key)
+                        src_data = data.get(sub_key, data) if sub_key else data
+
+                        if isinstance(src_data, dict):
+                            for eng, val in src_data.items():
+                                if key == "shikimori_genres_map":
+                                    normalized[eng] = val
+                                else:
+                                    if isinstance(val, dict) and "russian" in val:
+                                        rus = val["russian"]
+                                        normalized[eng] = rus if isinstance(rus, list) else [rus]
+                                    elif isinstance(val, list):
+                                        normalized[eng] = val
+                                    else:
+                                        normalized[eng] = [str(val)]
+                        return normalized
+                    except Exception as e:
+                        print(f"AnimeSearch: ошибка загрузки {key} из URL: {e}")
+
+                fallback_defaults = {
+                    "genre_translations": {"Action": ["жанры были удалены"]},
+                    "additional_genre_translations": {},
+                    "tag_translations": {},
+                    "additional_tag_translations": {},
+                    "shikimori_genres_map": {},
+                }
+                try:
+                    loaded = json.loads(raw) if raw else fallback_defaults.get(key, {})
+                except:
+                    loaded = fallback_defaults.get(key, {})
+                normalized = {}
+                for eng, val in loaded.items():
+                    if key == "shikimori_genres_map":
+                        normalized[eng] = val
+                    else:
+                        if isinstance(val, dict) and "russian" in val:
+                            rus = val["russian"]
+                            normalized[eng] = rus if isinstance(rus, list) else [rus]
+                        elif isinstance(val, list):
+                            normalized[eng] = val
+                        else:
+                            normalized[eng] = [str(val)]
+                return normalized
+
+            def safe_load_list(key: str) -> list:
+                raw = self.get_setting(key, DEFAULT_MAPPING_URL).strip()
+                if raw.startswith(("http://", "https://")):
+                    try:
+                        resp = requests.get(raw, timeout=8)
+                        resp.raise_for_status()
+                        data = resp.json()
+
+                        loaded = []
+                        sub_map = {
+                            "ordered_genre_keys": "sorting_genres",
+                            "ordered_tag_keys": "sorting_tags",
+                        }
+                        sub_key = sub_map.get(key)
+                        src = data.get(sub_key, []) if sub_key else []
+
+                        if isinstance(src, list):
+                            loaded = [x.strip() for x in src if isinstance(x, str) and x.strip()]
+                        elif isinstance(src, dict):
+                            loaded = sorted([k.strip() for k in src.keys() if isinstance(k, str) and k.strip()])
+                        return loaded
+                    except Exception as e:
+                        print(f"AnimeSearch: ошибка загрузки списка {key}: {e}")
+
+                fallback_defaults = {
+                    "ordered_genre_keys": ["Action"],
+                }
+                fallback = fallback_defaults.get(key, [])
+                return [x.strip() for x in raw.split(",") if x.strip()] or fallback
+
+            self.genre_translations = safe_load_mapping("genre_translations")
+            self.additional_genre_translations = safe_load_mapping("additional_genre_translations")
+            self.tag_translations = safe_load_mapping("tag_translations")
+            self.additional_tag_translations = safe_load_mapping("additional_tag_translations")
+            self.shikimori_genres_map = safe_load_mapping("shikimori_genres_map")
+
+            self.ordered_genre_keys = safe_load_list("ordered_genre_keys")
+            self.ordered_tag_keys = safe_load_list("ordered_tag_keys")
+
+            self.reverse_shikimori_genre_map = {}
+            for eng, data in self.shikimori_genres_map.items():
+                if isinstance(data, dict):
+                    for rus in data.get("russian", []):
+                        self.reverse_shikimori_genre_map[rus.lower()] = eng
+                self.reverse_shikimori_genre_map[eng.lower()] = eng
+
+        except Exception as e:
+            print(f"AnimeSearch: ошибка при обновлении настроек: {e}")
+
+    def create_settings(self):
+        self.update_settings()
+
+        def oc(_):
+            self.update_settings()
+
+        def _preview_text() -> str:
+            lines = []
+            cover = f"https://img.anili.st/media/12345"
+            preview = f"[­]({cover})"
+            main_title = "Русское название"
+            label = "#аниме " if self.show_anime_label and self.hash_anime else "аниме " if self.show_anime_label else ""
+            header = preview + label + f"`{escape_underscore(main_title)}`" if self.show_anime_label else preview + f"| `{escape_underscore(main_title)}`"
+            lines.append(header)
+            lines.append("| Английское название")
+            parts = []
+            if self.show_country:
+                country_text = "#Япония" if self.hash_country else "Япония"
+                parts.append("🇯🇵" + escape_underscore(country_text))
+            if self.show_season_year:
+                parts.append(escape_underscore("лето 2018г."))
+            if parts:
+                lines.append(", ".join(parts))
+            if self.show_format:
+                fmt_text = "короткий сериал"
+                if self.hash_format:
+                    if self.underscore_format:
+                        fmt_text = fmt_text.replace(" ", "_")
+                    else:
+                        fmt_text = fmt_text.replace(" ", "")
+                    fmt_text = "#" + fmt_text
+                elif self.underscore_format:
+                    fmt_text = fmt_text.replace(" ", "_")
+                lines.append(f"формат {escape_underscore(fmt_text)}")
+            if self.show_demographic:
+                demo_text = "сёнэн"
+                if self.hash_demographic:
+                    if self.underscore_format:
+                        demo_text = demo_text.replace(" ", "_")
+                    else:
+                        demo_text = demo_text.replace(" ", "")
+                    demo_text = "#" + demo_text
+                elif self.underscore_format:
+                    demo_text = demo_text.replace(" ", "_")
+                lines.append(f"целевая аудитория {escape_underscore(demo_text)}")
+
+            genre_parts = []
+            if self.show_genres:
+                g = "основной жанр"
+                use_hash = self.hash_genres_main
+                use_underscore = self.underscore_genres_main
+                if use_hash:
+                    if use_underscore:
+                        g = g.replace(" ", "_")
+                    else:
+                        g = g.replace(" ", "")
+                    g = "#" + g
+                elif use_underscore:
+                    g = g.replace(" ", "_")
+                genre_parts.append(escape_underscore(g))
+            if self.show_additional_genres:
+                g = "доп жанр"
+                use_hash = self.hash_genres_add
+                use_underscore = self.underscore_genres_add
+                if use_hash:
+                    if use_underscore:
+                        g = g.replace(" ", "_")
+                    else:
+                        g = g.replace(" ", "")
+                    g = "#" + g
+                elif use_underscore:
+                    g = g.replace(" ", "_")
+                genre_parts.append(escape_underscore(g))
+            if self.show_non_translated_genres:
+                g = "не переведённый жанр"
+                use_hash = self.hash_genres_non
+                use_underscore = self.underscore_genres_non
+                if use_hash:
+                    if use_underscore:
+                        g = g.replace(" ", "_")
+                    else:
+                        g = g.replace(" ", "")
+                    g = "#" + g
+                elif use_underscore:
+                    g = g.replace(" ", "_")
+                genre_parts.append(escape_underscore(g))
+            if genre_parts:
+                lines.append(f"жанры: {' '.join(genre_parts)}")
+
+            tag_parts = []
+            if self.show_tags:
+                t = "основной тег"
+                use_hash = self.hash_tags_main
+                use_underscore = self.underscore_tags_main
+                if use_hash:
+                    if use_underscore:
+                        t = t.replace(" ", "_")
+                    else:
+                        t = t.replace(" ", "")
+                    t = "#" + t
+                elif use_underscore:
+                    t = t.replace(" ", "_")
+                tag_parts.append(escape_underscore(t))
+            if self.show_additional_tags:
+                t = "доп тег"
+                use_hash = self.hash_tags_add
+                use_underscore = self.underscore_tags_add
+                if use_hash:
+                    if use_underscore:
+                        t = t.replace(" ", "_")
+                    else:
+                        t = t.replace(" ", "")
+                    t = "#" + t
+                elif use_underscore:
+                    t = t.replace(" ", "_")
+                tag_parts.append(escape_underscore(t))
+            if self.show_non_translated_tags:
+                t = "не переведённый тег"
+                use_hash = self.hash_tags_non
+                use_underscore = self.underscore_tags_non
+                if use_hash:
+                    if use_underscore:
+                        t = t.replace(" ", "_")
+                    else:
+                        t = t.replace(" ", "")
+                    t = "#" + t
+                elif use_underscore:
+                    t = t.replace(" ", "_")
+                tag_parts.append(escape_underscore(t))
+            if tag_parts:
+                lines.append(f"теги: {' '.join(tag_parts)}")
+
+            link_lines = []
+            if self.show_link_in_full:
+                link_lines.append(f"[{escape_underscore(self.anilist_link_text)}](https://anilist.co/anime/12345)")
+            if self.show_shikimori_link:
+                link_lines.append(f"[{escape_underscore(self.shikimori_link_text)}](https://shikimori.one/animes/12345)")
+            if link_lines:
+                if self.links_format == 0:
+                    lines.append(", ".join(link_lines))
+                elif self.links_format == 1:
+                    lines.append(" ".join(link_lines))
+                elif self.links_format == 2:
+                    lines.append("\n".join(link_lines))
+                elif self.links_format == 3:
+                    lines.append(", ".join(reversed(link_lines)))
+                elif self.links_format == 4:
+                    lines.append(" ".join(reversed(link_lines)))
+                elif self.links_format == 5:
+                    lines.append("\n".join(reversed(link_lines)))
+
+            return "\n".join(lines)
+
+        def _handle_preview_click(_):
+            self.alert_manager.show_info_alert("Предпросмотр:", _preview_text(), "Закрыть")
+
+        return [
+            Header("Настройки команд"),
+            Input(key="search_commands", icon="msg_search", text="Команды поиска", default=".а, .аниме, .a, .anime", subtext="Через запятую", on_change=oc),
+            Input(key="cover_commands", icon="msg_link_folder", text="Команды ссылки", default=".с, .ссылка, .л, .линк, .l, .link", subtext="Через запятую", on_change=oc),
+            Input(key="random_commands", icon="msg_search", text="Команды рандома", default=".р, .рандом, .r, .random", subtext="Через запятую", on_change=oc),
+            Divider(),
+            Text(icon="navbar_search_tag", text="Настройки поиска", create_sub_fragment=lambda: [
+                Header("Основные настройки поиска"),
+                Switch(key="translate_ru_to_en", text="Использовать Google Translate", subtext="Основной переводчик", default=True, on_change=oc),
+                Switch(key="use_fallback_translator", text="Использовать LibreTranslate", default=True, subtext="Доп. переводчик, если первый ничего не нашёл", on_change=oc),
+                Switch(key="use_shikimori", text="Поиск через Shikimori", subtext="Добавляет возможность искать тайтлы по API Shikimori", default=True, on_change=oc),
+                Selector(key="direct_id_source", text="Источник при поиске по ID", default=0, items=["AniList", "Shikimori"], on_change=oc),
+                Selector(key="random_source", text="Источник рандома", default=0, items=["AniList", "Shikimori"], on_change=oc),
+                Divider(),
+                Header("Дополнительная проверка"),
+                Input(key="shikimori_limit", text="Проверка N тайтлов Shikimori", default="30", subtext="Сравнение названий, для точного ответа\n1–30", on_change=oc),
+                Input(key="tag_min_rank", text="Минимальный ранг тега на AniList", default="20", subtext="Доверие пользователей к тегу в процентах\n0–100", on_change=oc),
+                Divider(),
+                Header("Настройки рандома AniList"),
+                Input(key="min_id", text="Минимальный ID для рандома", default="1", on_change=oc),
+                Input(key="max_id", text="Максимальный ID для рандома", default="700000", on_change=oc),
+                Input(key="random_max_attempts", text="Max попыток при рандоме по ID", default="10", on_change=oc),
+                Input(key="random_top_limit", text="Выбор из топа при рандоме по жанрам/тегам", default="50", subtext="1–50", on_change=oc),
+                Divider(),
+                Header("Сортировка жанров и тегов"),
+                Input(key="ordered_genre_keys", text="Порядок жанров", default="https://raw.githubusercontent.com/Islite/mapping-genre-tag-list-ExteraGram/refs/heads/main/mapping_all_list.json", subtext="JSON или URL", on_change=oc),
+                Input(key="ordered_tag_keys", text="Порядок тегов", default="https://raw.githubusercontent.com/Islite/mapping-genre-tag-list-ExteraGram/refs/heads/main/mapping_all_list.json", subtext="JSON или URL", on_change=oc),
+                Divider(),
+                Header("Пользовательские переводы жанров и тегов"),
+                Input(key="genre_translations", text="Жанры", default="https://raw.githubusercontent.com/Islite/mapping-genre-tag-list-ExteraGram/refs/heads/main/mapping_all_list.json", subtext="JSON или URL", on_change=oc),
+                Input(key="additional_genre_translations", text="Доп. жанры", default="https://raw.githubusercontent.com/Islite/mapping-genre-tag-list-ExteraGram/refs/heads/main/mapping_all_list.json", subtext="JSON или URL", on_change=oc),
+                Input(key="tag_translations", text="Основные теги", default="https://raw.githubusercontent.com/Islite/mapping-genre-tag-list-ExteraGram/refs/heads/main/mapping_all_list.json", subtext="JSON или URL", on_change=oc),
+                Input(key="additional_tag_translations", text="Доп. теги", default="https://raw.githubusercontent.com/Islite/mapping-genre-tag-list-ExteraGram/refs/heads/main/mapping_all_list.json", subtext="JSON или URL", on_change=oc),
+                Divider(),
+                Input(key="shikimori_genres_map", text="ID жанров Shikimori", default="https://raw.githubusercontent.com/Islite/mapping-genre-tag-list-ExteraGram/refs/heads/main/mapping_all_list.json", subtext="JSON или URL", on_change=oc),
+            ]),
+            Text(icon="msg_view_file", text="Настройки отображения", create_sub_fragment=lambda: [
+                Header("Предпросмотр"),
+                Text(text="Предпросмотр сообщений", icon="msg_info", on_click=_handle_preview_click),
+                Divider(),
+                Text(icon="msg_settings", text="Доп. настройки", create_sub_fragment=lambda: [
+                    Switch(key="hide_cover_preview", text="Скрывать ссылку", default=False, on_change=oc),
+                    Divider(),
+                    Input(key="anilist_link_text", text="Текст ссылки на AniList", default="AniList", on_change=oc),
+                    Input(key="shikimori_link_text", text="Текст ссылки на Shikimori", default="Shikimori", on_change=oc),
+                    Selector(key="links_format", text="Вид дополнительных ссылок", default=0, items=["AniList, Shikimori","AniList Shikimori","AniList\\nShikimori","Shikimori, AniList","Shikimori AniList","Shikimori\\nAniList"], on_change=oc),
+                    Divider(),
+                    Header("Ограничение количества"),
+                    Input(key="genre_max_count", text="Максимум жанров", default="0", subtext="0 - все", on_change=oc),
+                    Input(key="tag_max_count", text="Максимум тегов", default="0", subtext="0 - все", on_change=oc),
+                ]),
+                Divider(),
+                Text(icon="msg_reorder", text="Отображение полей", create_sub_fragment=lambda: [
+                    Switch(key="show_anime_label", text="Аниме", default=True, on_change=oc),
+                    Switch(key="show_country", text="Страна и флаг", default=True, on_change=oc),
+                    Switch(key="show_season_year", text="Сезон и год", default=True, on_change=oc),
+                    Switch(key="show_format", text="Формат", default=True, on_change=oc),
+                    Switch(key="show_demographic", text="Целевая аудитория", default=True, on_change=oc),
+                    Divider(),
+                    Switch(key="show_genres", text="Основные жанры", default=True, on_change=oc),
+                    Switch(key="show_additional_genres", text="Доп. жанры", default=True, on_change=oc),
+                    Switch(key="show_non_translated_genres", text="Не переведённые жанры", default=False, on_change=oc),
+                    Divider(),
+                    Switch(key="show_tags", text="Основные теги", default=True, on_change=oc),
+                    Switch(key="show_additional_tags", text="Доп. теги", default=True, on_change=oc),
+                    Switch(key="show_non_translated_tags", text="Не переведённые теги", default=False, on_change=oc),
+                    Divider(),
+                    Switch(key="show_link_in_full", text="Ссылка на AniList в сообщении", default=False, on_change=oc),
+                    Switch(key="show_shikimori_link", text="Ссылка на Shikimori в сообщении", default=False, on_change=oc),
+                ]),
+                Text(icon="msg_filled_general", text="Отображение #", create_sub_fragment=lambda: [
+                    Switch(key="hash_anime", text="#аниме", default=True, on_change=oc),
+                    Switch(key="hash_country", text="#страна", default=True, on_change=oc),
+                    Switch(key="hash_format", text="#формат", default=True, on_change=oc),
+                    Switch(key="hash_demographic", text="#демография", default=True, on_change=oc),
+                    Divider(),
+                    Switch(key="hash_genres_main", text="#основные жанры", default=True, on_change=oc),
+                    Switch(key="hash_genres_add", text="#доп. жанры", default=True, on_change=oc),
+                    Switch(key="hash_genres_non", text="#не переведённые жанры", default=True, on_change=oc),
+                    Divider(),
+                    Switch(key="hash_tags_main", text="#основные теги", default=True, on_change=oc),
+                    Switch(key="hash_tags_add", text="#доп. теги", default=True, on_change=oc),
+                    Switch(key="hash_tags_non", text="#не переведённые теги", default=True, on_change=oc),
+                ]),
+                Text(icon="menu_tag_edit", text="Отображение _", create_sub_fragment=lambda: [
+                    Switch(key="underscore_format", text="_ формат", default=True, on_change=oc),
+                    Divider(),
+                    Switch(key="underscore_genres_main", text="_ основные жанры", default=True, on_change=oc),
+                    Switch(key="underscore_genres_add", text="_ доп. жанры", default=True, on_change=oc),
+                    Switch(key="underscore_genres_non", text="_ не переведённые жанры", default=True, on_change=oc),
+                    Divider(),
+                    Switch(key="underscore_tags_main", text="_ основные теги", default=True, on_change=oc),
+                    Switch(key="underscore_tags_add", text="_ доп. теги", default=True, on_change=oc),
+                    Switch(key="underscore_tags_non", text="_ не переведённые теги", default=True, on_change=oc),
+                ]),
+            ])
+        ]
+
+    def _show_loading(self):
+        fragment = get_last_fragment()
+        BulletinHelper.show_info("Поиск аниме...", fragment)
+
+    def _fetch_shikimori_by_id(self, anime_id: str) -> Optional[dict]:
+        try:
+            url = f"{self.SHIKIMORI_API_ANIMES}/{anime_id}"
+            headers = {"User-Agent": "ExteraGram-AnimeSearch/1.0.0"}
+            resp = requests.get(url, headers=headers, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            if isinstance(data, dict) and data:
+                return data
+            return None
+        except Exception:
+            return None
+
+    def format_tag(self, translations: list[str], use_underscore: bool, add_hash: bool) -> list[str]:
+        seen = set()
+        tags = []
+        for t in translations:
+            lower = t.lower()
+            if lower in seen:
+                continue
+            seen.add(lower)
+            text = lower.replace("-", " ")
+            if add_hash:
+                if use_underscore:
+                    text = text.replace(" ", "_")
+                else:
+                    text = text.replace(" ", "")
+                text = "#" + text
+            elif use_underscore:
+                text = text.replace(" ", "_")
+            tags.append(escape_underscore(text))
+        return tags
+
+    def format_anime_full(self, data: dict, shiki_data: Optional[dict] = None) -> str:
+        if not data:
+            return "Аниме не найдено"
+        id_ = data["id"]
+        cover = f"https://img.anili.st/media/{id_}"
+        titles = data["title"]
+        en = titles.get("english") or titles.get("romaji") or titles.get("native") or titles.get("userPreferred") or "Неизвестно"
+        ru_names = []
+        other_ru = []
+        shiki_id = None
+        if shiki_data:
+            ru_names = [n for n in [shiki_data.get("russian")] + shiki_data.get("synonyms", []) if n and any(c in "абвгдеёжзийклмнопрстуфхцчшщъыьэюяАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ" for c in n)]
+            ru_names = list(dict.fromkeys(filter(None, ru_names)))
+            main_ru = ru_names[0] if ru_names else None
+            other_ru = ru_names[1:] if len(ru_names) > 1 else []
+            shiki_id = shiki_data.get("id")
+        else:
+            ru_synonyms = [s for s in data.get("synonyms", []) if re.search(r"[а-яА-ЯёЁ]", s)]
+            main_ru = ru_synonyms[0] if ru_synonyms else None
+            other_ru = [s for s in ru_synonyms if s != main_ru][:3]
+        if not main_ru and self.last_successful_original:
+            main_ru = self.last_successful_original.strip()
+        main_title = main_ru or en
+        preview = f"[­]({cover})"
+        lines = []
+        label = "#аниме " if self.show_anime_label and self.hash_anime else "аниме " if self.show_anime_label else ""
+        header = preview + label + f"`{escape_underscore(main_title)}`" if self.show_anime_label else preview + f"| `{escape_underscore(main_title)}`"
+        lines.append(header)
+        alt_lines = []
+        if other_ru:
+            alt_lines.append(f"| `{', '.join(map(escape_underscore, other_ru))}`")
+        if en != main_title:
+            alt_lines.append(f"| `{escape_underscore(en)}`")
+        lines.extend(alt_lines)
+        parts = []
+        if self.show_country:
+            flag = self.COUNTRY_FLAG.get(data.get("countryOfOrigin", "JP"), "")
+            country = self.COUNTRY_BASE.get(data.get("countryOfOrigin", "JP"), "Неизвестно")
+            country_text = country
+            if self.hash_country:
+                if self.underscore_format:
+                    country_text = country_text.replace(" ", "_")
+                else:
+                    country_text = country_text.replace(" ", "")
+                country_text = "#" + country_text
+            parts.append(escape_underscore(flag + country_text))
+        if self.show_season_year:
+            season = self.SEASON_MAP.get(data.get("season"), "")
+            year = data.get("seasonYear") or "????"
+            s_str = f"{season} {year}г." if season else f"{year}г."
+            if s_str != "????г.":
+                parts.append(escape_underscore(s_str))
+        if parts:
+            lines.append(", ".join(parts))
+        if self.show_format:
+            fmt = self.FORMAT_MAP.get(data.get("format", ""), "unknown")
+            if self.hash_format:
+                if self.underscore_format:
+                    fmt = fmt.replace(" ", "_")
+                else:
+                    fmt = fmt.replace(" ", "")
+                fmt = "#" + fmt
+            elif self.underscore_format:
+                fmt = fmt.replace(" ", "_")
+            lines.append(f"формат {escape_underscore(fmt)}")
+        if self.show_demographic:
+            demo_tags = [self.DEMOGRAPHIC_MAP.get(t["name"]) for t in data.get("tags", []) if t["name"] in self.DEMOGRAPHIC_MAP]
+            if demo_tags:
+                demo_list = []
+                for d in set(demo_tags):
+                    text = d
+                    if self.hash_demographic:
+                        if self.underscore_format:
+                            text = text.replace(" ", "_")
+                        else:
+                            text = text.replace(" ", "")
+                        text = "#" + text
+                    elif self.underscore_format:
+                        text = text.replace(" ", "_")
+                    demo_list.append(escape_underscore(text))
+                demo = " ".join(demo_list)
+                lines.append(f"целевая аудитория {demo}")
+            else:
+                lines.append("целевая аудитория не указана")
+
+        demographic_english_names = {"Shounen","Shonen","Shoujo","Shojo","Seinen","Josei","Kids"}
+
+        all_genres = set(data.get("genres", []))
+
+        potential_genre_tags = {t["name"] for t in data.get("tags", []) if (t["name"] in self.genre_translations or t["name"] in self.additional_genre_translations) and not t.get("isMediaSpoiler") and t.get("rank", 0) >= self.tag_min_rank}
+        all_genres.update(potential_genre_tags)
+
+        if shiki_data and "genres" in shiki_data:
+            for g in shiki_data["genres"]:
+                eng_name = g.get("name")
+                rus_name = g.get("russian")
+                mapped = self.reverse_shikimori_genre_map.get(rus_name.lower() if rus_name else eng_name.lower(), eng_name)
+                if mapped:
+                    all_genres.add(mapped)
+
+        g_set = set()
+        g_list = []
+
+        ordered_genres = [g for g in self.ordered_genre_keys if g in all_genres]
+        remaining_genres = sorted(all_genres - set(ordered_genres))
+
+        total_added_g = 0
+        max_total_g = self.genre_max_count if self.genre_max_count > 0 else float('inf')
+
+        for genre_name in ordered_genres + remaining_genres:
+            if total_added_g >= max_total_g:
+                break
+
+            processed = False
+
+            if self.show_genres and genre_name in self.genre_translations and not processed:
+                trans = self.genre_translations[genre_name]
+                if not isinstance(trans, list):
+                    trans = [trans]
+                for tag in self.format_tag(trans, self.underscore_genres_main, self.hash_genres_main):
+                    if tag not in g_set:
+                        g_set.add(tag)
+                        g_list.append(tag)
+                        total_added_g += 1
+                processed = True
+
+            if self.show_additional_genres and genre_name in self.additional_genre_translations and not processed:
+                trans = self.additional_genre_translations[genre_name]
+                if not isinstance(trans, list):
+                    trans = [trans]
+                for tag in self.format_tag(trans, self.underscore_genres_add, self.hash_genres_add):
+                    if tag not in g_set:
+                        g_set.add(tag)
+                        g_list.append(tag)
+                        total_added_g += 1
+                processed = True
+
+            if self.show_non_translated_genres and not processed:
+                for tag in self.format_tag([genre_name.lower()], self.underscore_genres_non, self.hash_genres_non):
+                    if tag not in g_set and total_added_g < max_total_g:
+                        g_set.add(tag)
+                        g_list.append(tag)
+                        total_added_g += 1
+
+        if g_list:
+            lines.append(f"жанры: {' '.join(g_list)}")
+
+        all_tags = [t for t in data.get("tags", []) if not t.get("isMediaSpoiler") and t.get("rank", 0) >= self.tag_min_rank and t["name"] not in demographic_english_names]
+
+        genre_like_tags = set(self.genre_translations.keys()) | set(self.additional_genre_translations.keys())
+        all_tags = [t for t in all_tags if t["name"] not in genre_like_tags]
+
+        tag_names_set = {t["name"] for t in all_tags}
+
+        t_set = set()
+        t_list = []
+
+        ordered_tags = [t for t in self.ordered_tag_keys if t in tag_names_set]
+        remaining_tags = sorted([t for t in all_tags if t["name"] not in ordered_tags], key=lambda x: x["rank"], reverse=True)
+
+        total_added_t = 0
+        max_total_t = self.tag_max_count if self.tag_max_count > 0 else float('inf')
+
+        for tag_container in [ordered_tags, [t["name"] for t in remaining_tags]]:
+            for t_name in tag_container:
+                if total_added_t >= max_total_t:
+                    break
+
+                processed = False
+
+                if self.show_tags and t_name in self.tag_translations and not processed:
+                    trans = self.tag_translations[t_name]
+                    if not isinstance(trans, list):
+                        trans = [trans]
+                    for tag in self.format_tag(trans, self.underscore_tags_main, self.hash_tags_main):
+                        if tag not in t_set:
+                            t_set.add(tag)
+                            t_list.append(tag)
+                            total_added_t += 1
+                    processed = True
+
+                if self.show_additional_tags and t_name in self.additional_tag_translations and not processed:
+                    trans = self.additional_tag_translations[t_name]
+                    if not isinstance(trans, list):
+                        trans = [trans]
+                    for tag in self.format_tag(trans, self.underscore_tags_add, self.hash_tags_add):
+                        if tag not in t_set:
+                            t_set.add(tag)
+                            t_list.append(tag)
+                            total_added_t += 1
+                    processed = True
+
+                if self.show_non_translated_tags and not processed:
+                    for tag in self.format_tag([t_name.lower()], self.underscore_tags_non, self.hash_tags_non):
+                        if tag not in t_set and total_added_t < max_total_t:
+                            t_set.add(tag)
+                            t_list.append(tag)
+                            total_added_t += 1
+
+        if t_list:
+            lines.append(f"теги: {' '.join(t_list)}")
+
+        link_lines = []
+        if self.show_link_in_full:
+            link_lines.append(f"[{escape_underscore(self.anilist_link_text)}](https://anilist.co/anime/{id_})")
+        if self.show_shikimori_link and shiki_id:
+            link_lines.append(f"[{escape_underscore(self.shikimori_link_text)}](https://shikimori.one/animes/{shiki_id})")
+        if link_lines:
+            if self.links_format == 0:
+                lines.append(", ".join(link_lines))
+            elif self.links_format == 1:
+                lines.append(" ".join(link_lines))
+            elif self.links_format == 2:
+                lines.append("\n".join(link_lines))
+            elif self.links_format == 3:
+                lines.append(", ".join(reversed(link_lines)))
+            elif self.links_format == 4:
+                lines.append(" ".join(reversed(link_lines)))
+            elif self.links_format == 5:
+                lines.append("\n".join(reversed(link_lines)))
+
+        return "\n".join(lines)
+
+    def _translate_ru_to_en(self, text: str) -> str:
+        text = text.strip()
+        if not text:
+            return text
+        if text in self.translate_cache:
+            return self.translate_cache[text]
+        translated = text
+        if self.translate_ru_to_en:
+            try:
+                params = {"client": "gtx", "sl": "ru", "tl": "en", "dt": "t", "q": text}
+                resp = requests.get(self.GOOGLE_TRANSLATE_URL, params=params, timeout=7)
+                resp.raise_for_status()
+                data = resp.json()
+                if data and data[0]:
+                    translated = "".join(seg[0] for seg in data[0] if seg and seg[0])
+                    if translated.strip() and translated.strip().lower() != text.strip().lower():
+                        self.translate_cache[text] = translated
+                        return translated
+            except Exception:
+                pass
+            if self.use_fallback_translator:
+                try:
+                    payload = {"q": text, "source": "ru", "target": "en", "format": "text"}
+                    resp = requests.post(self.LIBRE_TRANSLATE_URL, json=payload, timeout=7)
+                    resp.raise_for_status()
+                    data = resp.json()
+                    if "translatedText" in data:
+                        translated = data["translatedText"]
+                        if translated.strip() and translated.strip().lower() != text.strip().lower():
+                            self.translate_cache[text] = translated
+                            return translated
+                except Exception:
+                    pass
+        self.translate_cache[text] = text
+        return text
+
+    def _best_shikimori_match(self, candidates: list[dict], query: str, target_en: Optional[str] = None, target_format: Optional[str] = None) -> dict | None:
+        if not candidates:
+            return None
+        query_lower = query.lower().strip()
+        best = None
+        best_similarity = 0
+        for candidate in candidates:
+            russian = (candidate.get("russian") or "").lower()
+            name = (candidate.get("name") or "").lower()
+            english = " ".join([e.lower() for e in (candidate.get("english") or []) + candidate.get("synonyms", []) if e])
+            similarity = max(
+                SequenceMatcher(None, query_lower, russian).ratio(),
+                SequenceMatcher(None, query_lower, name).ratio(),
+                SequenceMatcher(None, query_lower, english).ratio()
+            )
+            if similarity > best_similarity:
+                best_similarity = similarity
+                best = candidate
+        if best_similarity > 0.3:
+            return best
+        return candidates[0] if candidates else None
+
+    def _search_shikimori(self, query: str, target_en: Optional[str] = None, target_format: Optional[str] = None) -> dict | None:
+        cache_key = f"shiki_{query}"
+        if cache_key in self.search_cache:
+            return self.search_cache[cache_key]
+        params = {"search": query, "limit": self.shikimori_limit, "order": "ranked"}
+        headers = {"User-Agent": "ExteraGram-AnimeSearch/1.0.0"}
+        try:
+            resp = requests.get(self.SHIKIMORI_API_ANIMES, params=params, headers=headers, timeout=10)
+            resp.raise_for_status()
+            candidates = resp.json()
+            result = self._best_shikimori_match(candidates, query, target_en, target_format)
+            if result:
+                self.search_cache[cache_key] = result
+            return result
+        except Exception:
+            return None
+
+    def _get_message_object(self, reply_msg):
+        try:
+            if hasattr(reply_msg, "messageOwner"):
+                return reply_msg.messageOwner
+            if hasattr(reply_msg, "replyMessageObject"):
+                return reply_msg.replyMessageObject.messageOwner or reply_msg.replyMessageObject
+            return reply_msg if hasattr(reply_msg, "message") else None
+        except:
+            return None
+
+    def on_send_message_hook(self, account: int, params: Any) -> HookResult:
+        try:
+            msg = params.message.strip() if params.message else ""
+            if not msg:
+                return HookResult()
+            msg_lower = msg.lower()
+            peer = params.peer
+            base = {"peer": peer}
+            if hasattr(params, "replyToMsg"):
+                base["replyToMsg"] = params.replyToMsg
+            if hasattr(params, "replyToTopMsg"):
+                base["replyToTopMsg"] = params.replyToTopMsg
+
+            def longest_cmd(type_):
+                candidates = []
+                for c in self.commands[type_]:
+                    if msg_lower.startswith(c + " ") or msg_lower.startswith(c + "\n"):
+                        candidates.append(c)
+                    elif msg_lower == c:  # ← добавлено: команда без текста
+                        candidates.append(c)
+                return max(candidates, key=len, default=None) if candidates else None
+
+            def get_reply_text():
+                reply_msg = getattr(params, "replyToMsg", None)
+                if not reply_msg:
+                    return ""
+                msg_obj = self._get_message_object(reply_msg)
+                return msg_obj.message.strip() if msg_obj and hasattr(msg_obj, "message") else ""
+
+            def clean_line(line: str) -> str:
+                return re.sub(r"^(\#аниме\s*|аниме\s*|\|\s*)", "", line, flags=re.IGNORECASE).strip()
+
+            def get_search_term(q: str) -> list[str]:
+                q = re.sub(r"\[\­\]\(https://img\.anili\.st/media/\d+\)", "", q.replace("\u00AD", "")).strip()
+                candidates = []
+                for line in q.split("\n")[:5]:
+                    cleaned = clean_line(line)
+                    if cleaned:
+                        candidates.append(cleaned)
+                return candidates
+
+            cmd = longest_cmd("search") or longest_cmd("cover") or longest_cmd("random")
+            if not cmd:
+                return HookResult()
+
+            # Выделяем запрос после команды (может быть пустым)
+            query_start = len(cmd)
+            query = msg[query_start:].strip() if len(msg) > query_start else ""
+            query = query or get_reply_text()
+
+            original_candidates = get_search_term(query)
+
+            # Для рандома пустой запрос разрешён
+            if not original_candidates and longest_cmd("random"):
+                original_candidates = [""]
+
+            if not original_candidates and not longest_cmd("random"):
+                if not getattr(params, "replyToMsg", None):
+                    send_params = {
+                        "peer": base["peer"],
+                        "message": "Введите название аниме после команды или ответьте на сообщение",
+                    }
+                    run_on_ui_thread(lambda: send_message(send_params))
+                return HookResult(strategy=HookStrategy.CANCEL)
+
+            first_term = original_candidates[0] if original_candidates else ""
+            cache_key = f"data_{first_term}"
+            if not longest_cmd("random") and cache_key in self.search_cache:
+                cached = self.search_cache[cache_key]
+                anilist_data, _, shiki_data = cached if len(cached) == 3 else (cached[0], cached[1], None)
+                text = f"https://img.anili.st/media/{anilist_data['id']}" if longest_cmd("cover") else self.format_anime_full(anilist_data, shiki_data)
+                if longest_cmd("cover") and self.hide_cover_preview:
+                    text = f"[­]({text})"
+                parsed = parse_markdown(text)
+
+                send_params = {
+                    "peer": base["peer"],
+                    "message": parsed.text,
+                }
+                if parsed.entities:
+                    send_params["entities"] = [e.to_tlrpc_object() for e in parsed.entities]
+                if "replyToMsg" in base:
+                    send_params["replyToMsg"] = base["replyToMsg"]
+                if "replyToTopMsg" in base:
+                    send_params["replyToTopMsg"] = base["replyToTopMsg"]
+
+                try:
+                    run_on_ui_thread(lambda: send_message(send_params))
+                    fragment = get_last_fragment()
+                    BulletinHelper.show_success("Аниме найдено", fragment)
+                except Exception as e:
+                    print(f"AnimeSearch: ошибка отправки из кэша: {e}")
+
+                return HookResult(strategy=HookStrategy.CANCEL)
+
+            self.last_successful_original = ""
+            has_cyrillic = bool(re.search(r"[а-яА-ЯёЁ]", " ".join(original_candidates)))
+            run_on_ui_thread(self._show_loading)
+
+            def send_only_success(text: str):
+                fragment = get_last_fragment()
+                parsed = parse_markdown(text)
+
+                send_params = {
+                    "peer": base["peer"],
+                    "message": parsed.text,
+                }
+                if parsed.entities:
+                    send_params["entities"] = [e.to_tlrpc_object() for e in parsed.entities]
+                if "replyToMsg" in base:
+                    send_params["replyToMsg"] = base["replyToMsg"]
+                if "replyToTopMsg" in base:
+                    send_params["replyToTopMsg"] = base["replyToTopMsg"]
+
+                try:
+                    run_on_ui_thread(lambda: send_message(send_params))
+                    BulletinHelper.show_success("Аниме найдено", fragment)
+                except Exception as e:
+                    print(f"AnimeSearch: ошибка отправки: {e}")
+                    BulletinHelper.show_error("Ошибка отправки", fragment)
+
+            def show_error_only(message: str = "Аниме не найдено"):
+                fragment = get_last_fragment()
+                BulletinHelper.show_error(message, fragment)
+
+            def get_data_by_id_or_search():
+                first = original_candidates[0] if original_candidates else ""
+                if first.isdigit():
+                    id_int = int(first)
+                    if self.direct_id_source == 1 and self.use_shikimori:
+                        shiki_data = self._fetch_shikimori_by_id(first)
+                        if shiki_data and (mal_id := shiki_data.get("myanimelist_id") or shiki_data.get("id_mal")):
+                            anilist_data = fetch_by_mal_id(mal_id)
+                        else:
+                            anilist_data = None
+                        if anilist_data:
+                            self.search_cache[cache_key] = (anilist_data, first, shiki_data)
+                            return anilist_data, first, shiki_data
+                        return None, "", None
+                    else:
+                        anilist_data = fetch_by_id(id_int)
+                        if anilist_data:
+                            anilist_en = anilist_data["title"].get("english") or anilist_data["title"].get("romaji") or anilist_data["title"].get("native")
+                            shiki_data = self._search_shikimori(anilist_en) if anilist_en and self.use_shikimori else None
+                            self.search_cache[cache_key] = (anilist_data, first, shiki_data)
+                            return anilist_data, first, shiki_data
+                        return None, "", None
+
+                anilist_data = None
+                shiki_data = None
+                successful_original = ""
+                if self.use_shikimori:
+                    for term in original_candidates:
+                        shiki_initial = self._search_shikimori(term)
+                        if shiki_initial:
+                            romaji = shiki_initial.get("name") or term
+                            anilist_data = fetch_anilist(romaji)
+                            if not anilist_data:
+                                mal_id = shiki_initial.get("myanimelist_id") or shiki_initial.get("id_mal")
+                                if mal_id:
+                                    anilist_data = fetch_by_mal_id(mal_id)
+                            if anilist_data:
+                                shiki_data = shiki_initial if shiki_initial.get("russian") else self._search_shikimori(anilist_data["title"].get("english") or anilist_data["title"].get("romaji"))
+                                successful_original = term
+                                self.search_cache[cache_key] = (anilist_data, successful_original, shiki_data)
+                                return anilist_data, successful_original, shiki_data
+                if not anilist_data and self.translate_ru_to_en and has_cyrillic:
+                    for term in original_candidates:
+                        en_term = self._translate_ru_to_en(term)
+                        anilist_data = fetch_anilist(en_term)
+                        if anilist_data:
+                            anilist_en = anilist_data["title"].get("english") or anilist_data["title"].get("romaji") or anilist_data["title"].get("native")
+                            shiki_data = self._search_shikimori(anilist_en) if anilist_en and self.use_shikimori else None
+                            successful_original = term
+                            self.search_cache[cache_key] = (anilist_data, successful_original, shiki_data)
+                            return anilist_data, successful_original, shiki_data
+                if not anilist_data:
+                    for term in original_candidates:
+                        anilist_data = fetch_anilist(term)
+                        if anilist_data:
+                            anilist_en = anilist_data["title"].get("english") or anilist_data["title"].get("romaji") or anilist_data["title"].get("native")
+                            shiki_data = self._search_shikimori(anilist_en) if anilist_en and self.use_shikimori else None
+                            successful_original = term
+                            self.search_cache[cache_key] = (anilist_data, successful_original, shiki_data)
+                            return anilist_data, successful_original, shiki_data
+                return None, "", None
+
+            def process_search():
+                try:
+                    data, orig, shiki = get_data_by_id_or_search()
+                    if data:
+                        self.last_successful_original = orig
+                        send_only_success(self.format_anime_full(data, shiki))
+                    else:
+                        show_error_only()
+                except Exception as e:
+                    print(f"AnimeSearch search error: {e}")
+                    show_error_only("Ошибка при поиске")
+
+            def process_cover():
+                try:
+                    data, _, _ = get_data_by_id_or_search()
+                    if data:
+                        url = f"https://img.anili.st/media/{data['id']}"
+                        text = f"[­]({url})" if self.hide_cover_preview else url
+                        send_only_success(text)
+                    else:
+                        show_error_only()
+                except Exception as e:
+                    print(f"AnimeSearch cover error: {e}")
+                    show_error_only("Ошибка при получении обложки")
+
+            def process_random():
+                try:
+                    term = " ".join(original_candidates) if original_candidates else ""
+                    words = [w.strip().lstrip("#").rstrip("#") for w in term.lower().split() if w.strip()]
+                    if self.random_source != 1 or not self.use_shikimori:
+                        data = fetch_top_by_criteria(term, self.random_top_limit)
+                        if data:
+                            send_only_success(self.format_anime_full(data))
+                        else:
+                            show_error_only()
+                    else:
+                        params = {"limit": 50, "order": "random"}
+                        shiki_kind = None
+                        shiki_season = None
+                        shiki_genres = set()
+
+                        for word in words:
+                            cleaned = word.rstrip("г.")
+                            if cleaned in self.REVERSE_SEASON_MAP:
+                                season_eng = self.REVERSE_SEASON_MAP[cleaned]
+                                next_idx = words.index(word) + 1 if word in words else -1
+                                if next_idx < len(words) and words[next_idx].isdigit():
+                                    shiki_season = f"{season_eng.lower()}_{words[next_idx]}"
+                                else:
+                                    shiki_season = season_eng.lower()
+                                continue
+                            if word in self.REVERSE_FORMAT_MAP:
+                                kind_eng = self.REVERSE_FORMAT_MAP[word]
+                                shiki_kind = "TV" if kind_eng == "TV_SHORT" else kind_eng.lower()
+                                continue
+                            if word in self.reverse_shikimori_genre_map:
+                                eng_genre = self.reverse_shikimori_genre_map[word]
+                                genre_data = self.shikimori_genres_map.get(eng_genre)
+                                if genre_data and isinstance(genre_data, dict):
+                                    genre_id = genre_data.get("id")
+                                    if genre_id:
+                                        shiki_genres.add(str(genre_id))
+
+                        if shiki_kind:
+                            params["kind"] = shiki_kind
+                        if shiki_season:
+                            params["season"] = shiki_season
+                        if shiki_genres:
+                            params["genre"] = ",".join(sorted(shiki_genres))
+
+                        print(f"AnimeSearch: Shikimori random params: {params}")
+
+                        resp = requests.get(self.SHIKIMORI_API_ANIMES, params=params, headers={"User-Agent": "ExteraGram-AnimeSearch/1.0.0"}, timeout=10)
+                        resp.raise_for_status()
+                        candidates = resp.json()
+                        if candidates:
+                            random_shiki = random.choice(candidates)
+                            data = fetch_anilist(random_shiki.get("name") or "")
+                            if data:
+                                send_only_success(self.format_anime_full(data, random_shiki))
+                            else:
+                                show_error_only()
+                        else:
+                            data = fetch_top_by_criteria(term, self.random_top_limit)
+                            if data:
+                                send_only_success(self.format_anime_full(data))
+                            else:
+                                show_error_only()
+                except Exception as e:
+                    print(f"AnimeSearch random error: {e}")
+                    show_error_only("Ошибка при рандоме")
+
+            try:
+                if longest_cmd("cover"):
+                    run_on_queue(process_cover)
+                elif longest_cmd("random"):
+                    run_on_queue(process_random)
+                else:
+                    run_on_queue(process_search)
+            except Exception as e:
+                print(f"AnimeSearch queue error: {e}")
+                show_error_only("Ошибка при поиске")
+
+            return HookResult(strategy=HookStrategy.CANCEL)
+        except Exception as e:
+            print(f"AnimeSearch hook error: {e}")
+            return HookResult()
+
+def fetch_anilist(search: Optional[str]) -> Optional[dict]:
+    if not search:
+        return None
+    try:
+        variables = {"search": search}
+        r = requests.post(Anilist_Co.ANILIST_GRAPHQL_URL, json={"query": Anilist_Co.SEARCH_QUERY, "variables": variables}, timeout=10)
+        r.raise_for_status()
+        media = r.json()["data"]["Page"]["media"]
+        return media[0] if media else None
+    except Exception:
+        return None
+
+def fetch_by_id(anime_id: int) -> Optional[dict]:
+    try:
+        r = requests.post(Anilist_Co.ANILIST_GRAPHQL_URL, json={"query": Anilist_Co.MEDIA_QUERY, "variables": {"id": anime_id}}, timeout=10)
+        r.raise_for_status()
+        return r.json()["data"]["Media"]
+    except Exception:
+        return None
+
+def fetch_by_mal_id(mal_id: int) -> Optional[dict]:
+    try:
+        r = requests.post(Anilist_Co.ANILIST_GRAPHQL_URL, json={"query": Anilist_Co.MEDIA_BY_MAL_QUERY, "variables": {"idMal": mal_id}}, timeout=10)
+        r.raise_for_status()
+        return r.json()["data"]["Media"]
+    except Exception:
+        return None
+
+def get_random_anime(max_attempts: int = 10) -> Optional[dict]:
+    for _ in range(max_attempts):
+        data = fetch_by_id(random.randint(1, 700000))
+        if data:
+            return data
+    return None
+
+def fetch_top_by_criteria(term: str, top_limit: int) -> Optional[dict]:
+    if top_limit < 1:
+        return get_random_anime()
+    norm = term.lower().replace("_", " ").strip()
+    words = [w.strip().lstrip("#").rstrip("#") for w in norm.split() if w.strip()]
+    variables = {"perPage": min(top_limit, 50)}
+    for word in words:
+        cleaned = word.rstrip("г.")
+        if cleaned in Anilist_Co.REVERSE_SEASON_MAP:
+            variables["season"] = Anilist_Co.REVERSE_SEASON_MAP[cleaned]
+            continue
+        if cleaned.isdigit() and 1900 <= int(cleaned) <= 2100:
+            variables["seasonYear"] = int(cleaned)
+            continue
+        if word in Anilist_Co.REVERSE_FORMAT_MAP:
+            variables["format"] = Anilist_Co.REVERSE_FORMAT_MAP[word]
+            continue
+        if word in Anilist_Co.REVERSE_COUNTRY_MAP:
+            variables["country"] = Anilist_Co.REVERSE_COUNTRY_MAP[word]
+            continue
+    if not any(k in variables for k in ["format", "country", "season", "seasonYear"]):
+        return get_random_anime()
+    try:
+        r = requests.post(Anilist_Co.ANILIST_GRAPHQL_URL, json={"query": Anilist_Co.CRITERIA_QUERY, "variables": variables}, timeout=10)
+        r.raise_for_status()
+        media = r.json()["data"]["Page"]["media"]
+        if media:
+            return media[random.randint(0, len(media) - 1)]
+    except Exception:
+        pass
+    return get_random_anime()
+
+def escape_underscore(text: str) -> str:
+    return text.replace("_", "\\_")
+
+class AlertManager:
+    def __init__(self):
+        self.alert_builder_instance: Optional[AlertDialogBuilder] = None
+
+    def show_info_alert(self, title: str, text: str, positive_button: str):
+        fragment = get_last_fragment()
+        if not fragment or not fragment.getParentActivity():
+            return
+        activity = fragment.getParentActivity()
+        builder = AlertDialogBuilder(activity, AlertDialogBuilder.ALERT_TYPE_MESSAGE)
+        self.alert_builder_instance = builder
+        builder.set_title(title)
+        try:
+            parsed = parse_markdown(text)
+            builder.set_message(parsed.text or text)
+        except Exception:
+            builder.set_message(text)
+        builder.set_positive_button(positive_button, lambda d, w: self.dismiss_dialog())
+        builder.set_cancelable(True)
+        builder.set_canceled_on_touch_outside(True)
+        run_on_ui_thread(builder.show)
+
+    def dismiss_dialog(self):
+        if self.alert_builder_instance:
+            run_on_ui_thread(self.alert_builder_instance.dismiss)
+            self.alert_builder_instance = None
