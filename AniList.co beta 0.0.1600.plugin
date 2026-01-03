@@ -5,6 +5,7 @@ __author__ = "@fakefeelinger"
 __version__ = "0.0.1600"
 __icon__ = "Islite_plugins/0"
 __min_version__ = "12.0.1"
+__download_url__ = "https://raw.githubusercontent.com/Islite/AniList.co/refs/heads/main/AniList.co%20beta%200.0.1600.plugin"
 
 import re
 import random
@@ -20,16 +21,42 @@ from ui.alert import AlertDialogBuilder
 from ui.settings import Header, Input, Switch, Divider, Selector, Text
 from ui.bulletin import BulletinHelper
 
-
 def escape_underscore(text: str) -> str:
     return text.replace("_", "\\_")
-
 
 class Anilist_Co(BasePlugin):
 
     def on_plugin_load(self):
         self.log("AniList.co 0.0.1600 загружен")
         self.add_on_send_message_hook(priority=100)
+        run_on_queue(self._check_for_updates)
+
+    def _check_for_updates(self):
+        LAST_TXT_URL = "https://raw.githubusercontent.com/Islite/AniList.co/refs/heads/main/last.txt"
+        try:
+            response = requests.get(LAST_TXT_URL, timeout=10)
+            if response.status_code != 200:
+                self.log("AniList update check: failed to fetch last.txt")
+                return
+
+            remote_url = response.text.strip()
+            if remote_url != __download_url__:
+                self.log(f"AniList update available: {remote_url}")
+
+                @run_on_ui_thread
+                def show_update_bulletin():
+                    bulletin = BulletinHelper.make(
+                        title="Обновление AniList.co",
+                        message=f"Доступна новая версия плагина!\nСкачать: {remote_url}",
+                        duration=15000
+                    )
+                    BulletinHelper.show(bulletin)
+
+                show_update_bulletin()
+            else:
+                self.log("AniList.co is up to date")
+        except Exception as e:
+            self.log(f"AniList update check error: {str(e)}")
 
     ANILIST_GRAPHQL_URL = "https://graphql.anilist.co"
     SHIKIMORI_API_ANIMES = "https://shikimori.one/api/animes"
@@ -840,7 +867,7 @@ query ($perPage: Int) {
                         translated = data["translatedText"]
                         if translated.strip() and translated.strip().lower() != text.strip().lower():
                             self.translate_cache[text] = translated
-                            return translated
+                        return translated
                 except Exception:
                     pass
         self.translate_cache[text] = text
@@ -913,7 +940,7 @@ query ($perPage: Int) {
                 for c in self.commands[type_]:
                     if msg_lower.startswith(c + " ") or msg_lower.startswith(c + "\n"):
                         candidates.append(c)
-                    elif msg_lower == c:  # ← добавлено: команда без текста
+                    elif msg_lower == c:
                         candidates.append(c)
                 return max(candidates, key=len, default=None) if candidates else None
 
@@ -940,14 +967,12 @@ query ($perPage: Int) {
             if not cmd:
                 return HookResult()
 
-            # Выделяем запрос после команды (может быть пустым)
             query_start = len(cmd)
             query = msg[query_start:].strip() if len(msg) > query_start else ""
             query = query or get_reply_text()
 
             original_candidates = get_search_term(query)
 
-            # Для рандома пустой запрос разрешён
             if not original_candidates and longest_cmd("random"):
                 original_candidates = [""]
 
@@ -1256,9 +1281,6 @@ def fetch_top_by_criteria(term: str, top_limit: int) -> Optional[dict]:
     except Exception:
         pass
     return get_random_anime()
-
-def escape_underscore(text: str) -> str:
-    return text.replace("_", "\\_")
 
 class AlertManager:
     def __init__(self):
