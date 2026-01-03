@@ -20,108 +20,16 @@ from markdown_utils import parse_markdown
 from ui.alert import AlertDialogBuilder
 from ui.settings import Header, Input, Switch, Divider, Selector, Text
 from ui.bulletin import BulletinHelper
+from com.exteragram.messenger.plugins import PluginsController
 
 def escape_underscore(text: str) -> str:
     return text.replace("_", "\\_")
 
 class Anilist_Co(BasePlugin):
 
-    def on_plugin_load(self):
-        self.log("AniList.co 0.0.1600 загружен")
-        self.add_on_send_message_hook(priority=100)
-        run_on_queue(self._check_for_updates)
-
-    def _check_for_updates(self):
-        LAST_TXT_URL = "https://raw.githubusercontent.com/Islite/AniList.co/refs/heads/main/last.txt"
-        try:
-            response = requests.get(LAST_TXT_URL, timeout=10)
-            if response.status_code != 200:
-                self.log("AniList update check: failed to fetch last.txt")
-                return
-
-            remote_url = response.text.strip()
-            if remote_url != __download_url__:
-                self.log(f"AniList update available: {remote_url}")
-
-                @run_on_ui_thread
-                def show_update_bulletin():
-                    bulletin = BulletinHelper.make(
-                        title="Обновление AniList.co",
-                        message=f"Доступна новая версия плагина!\nСкачать: {remote_url}",
-                        duration=15000
-                    )
-                    BulletinHelper.show(bulletin)
-
-                show_update_bulletin()
-            else:
-                self.log("AniList.co is up to date")
-        except Exception as e:
-            self.log(f"AniList update check error: {str(e)}")
-
-    ANILIST_GRAPHQL_URL = "https://graphql.anilist.co"
-    SHIKIMORI_API_ANIMES = "https://shikimori.one/api/animes"
-    GOOGLE_TRANSLATE_URL = "https://translate.googleapis.com/translate_a/single"
-    LIBRE_TRANSLATE_URL = "https://libretranslate.de/translate"
-
-    COUNTRY_BASE = {"JP": "Япония", "KR": "Корея", "CN": "Китай"}
-    COUNTRY_FLAG = {"JP": "🇯🇵", "KR": "🇰🇷", "CN": "🇨🇳"}
-    REVERSE_COUNTRY_MAP = {v.lower(): k for k, v in COUNTRY_BASE.items()}
-
-    SEASON_MAP = {"WINTER": "зима", "SPRING": "весна", "SUMMER": "лето", "FALL": "осень"}
-    REVERSE_SEASON_MAP = {v.lower(): k for k, v in SEASON_MAP.items()}
-
-    FORMAT_MAP = {"TV": "сериал","TV_SHORT": "короткий сериал","MOVIE": "фильм","OVA": "ova","ONA": "ona","SPECIAL": "спешл","MUSIC": "музыкальный"}
-    REVERSE_FORMAT_MAP = {v.lower(): k for k, v in FORMAT_MAP.items()}
-    REVERSE_FORMAT_MAP.update({v.lower().replace(" ", "_"): k for k, v in FORMAT_MAP.items()})
-
-    DEMOGRAPHIC_MAP = {"Shounen": "сёнэн","Shonen": "сёнэн","Shoujo": "сёдзё","Shojo": "сёдзё","Seinen": "сэйнэн","Josei": "дзёсэй","Kids": "детский"}
-
-    SEARCH_QUERY = """
-query ($search: String, $format: MediaFormat) {
-    Page(perPage: 1) {
-        media(search: $search, type: ANIME, format: $format, sort: SEARCH_MATCH) {
-            id title { romaji english native userPreferred } synonyms
-            countryOfOrigin season seasonYear format genres
-            tags { name rank isMediaSpoiler }
-        }
-    }
-}
-"""
-
-    MEDIA_QUERY = """
-query ($id: Int) {
-    Media(id: $id, type: ANIME) {
-        id title { romaji english native userPreferred } synonyms
-        countryOfOrigin season seasonYear format genres
-        tags { name rank isMediaSpoiler }
-    }
-}
-"""
-
-    MEDIA_BY_MAL_QUERY = """
-query ($idMal: Int) {
-    Media(idMal: $idMal, type: ANIME) {
-        id title { romaji english native userPreferred } synonyms
-        countryOfOrigin season seasonYear format genres
-        tags { name rank isMediaSpoiler }
-    }
-}
-"""
-
-    CRITERIA_QUERY = """
-query ($perPage: Int) {
-    Page(perPage: $perPage) {
-        media(type: ANIME, sort: POPULARITY_DESC) {
-            id title { romaji english native userPreferred } synonyms
-            countryOfOrigin season seasonYear format genres
-            tags { name rank isMediaSpoiler }
-        }
-    }
-}
-"""
-
     def __init__(self):
         super().__init__()
+        self.latest_url = None
         self.commands = {"search": [], "cover": [], "random": []}
         self.translate_cache = {}
         self.search_cache = {}
@@ -148,6 +56,59 @@ query ($perPage: Int) {
         self.ordered_genre_keys = []
         self.ordered_tag_keys = []
         self.reverse_shikimori_genre_map = {}
+
+    def on_plugin_load(self):
+        self.log("AniList.co 0.0.1601 загружен")
+        self.add_on_send_message_hook(priority=100)
+        run_on_queue(self._auto_check_update)
+
+    def _auto_check_update(self):
+        self._check_for_updates(notify_if_new=True)
+
+    def _check_for_updates(self, notify_if_new=False):
+        LAST_TXT_URL = "https://raw.githubusercontent.com/Islite/AniList.co/refs/heads/main/last.txt"
+        try:
+            response = requests.get(LAST_TXT_URL, timeout=10)
+            response.raise_for_status()
+            remote_url = response.text.strip()
+
+            if remote_url != __download_url__.strip():
+                self.latest_url = remote_url
+                if notify_if_new:
+                    run_on_ui_thread(lambda: BulletinHelper.show_info(
+                        "Появилось новое обновление!\nОбновиться можно в настройках плагина."
+                    ))
+            else:
+                self.latest_url = None
+        except Exception as e:
+            self.log(f"Update check error: {e}")
+
+    def _install_update(self):
+        if not self.latest_url:
+            run_on_ui_thread(lambda: BulletinHelper.show_error("Нет доступного обновления"))
+            return
+        try:
+            run_on_ui_thread(lambda: BulletinHelper.show_info("Скачивание и установка обновления..."))
+            resp = requests.get(self.latest_url, timeout=30)
+            resp.raise_for_status()
+            controller = PluginsController.getInstance()
+            controller.installPluginFromBytes(resp.content, "AniList_co.plugin")
+            run_on_ui_thread(lambda: BulletinHelper.show_success(
+                "Обновление успешно установлено!\nПерезапустите exteraGram для применения."
+            ))
+        except Exception as e:
+            self.log(f"Install failed: {e}")
+            run_on_ui_thread(lambda: BulletinHelper.show_error("Ошибка при установке обновления"))
+
+    def _check_and_install(self):
+        run_on_ui_thread(lambda: BulletinHelper.show_info("Проверка обновлений..."))
+        def callback():
+            self._check_for_updates(notify_if_new=False)
+            if self.latest_url:
+                self._install_update()
+            else:
+                run_on_ui_thread(lambda: BulletinHelper.show_success("Вы используете актуальную версию!"))
+        run_on_queue(callback)
 
     def update_settings(self):
         try:
@@ -247,7 +208,7 @@ query ($perPage: Int) {
                                         normalized[eng] = [str(val)]
                         return normalized
                     except Exception as e:
-                        print(f"AnimeSearch: ошибка загрузки {key} из URL: {e}")
+                        self.log(f"Ошибка загрузки {key} из URL: {e}")
 
                 fallback_defaults = {
                     "genre_translations": {"Action": ["жанры были удалены"]},
@@ -296,7 +257,7 @@ query ($perPage: Int) {
                             loaded = sorted([k.strip() for k in src.keys() if isinstance(k, str) and k.strip()])
                         return loaded
                     except Exception as e:
-                        print(f"AnimeSearch: ошибка загрузки списка {key}: {e}")
+                        self.log(f"Ошибка загрузки списка {key}: {e}")
 
                 fallback_defaults = {
                     "ordered_genre_keys": ["Action"],
@@ -321,7 +282,7 @@ query ($perPage: Int) {
                 self.reverse_shikimori_genre_map[eng.lower()] = eng
 
         except Exception as e:
-            print(f"AnimeSearch: ошибка при обновлении настроек: {e}")
+            self.log(f"Ошибка при обновлении настроек: {e}")
 
     def create_settings(self):
         self.update_settings()
@@ -574,8 +535,77 @@ query ($perPage: Int) {
                     Switch(key="underscore_tags_add", text="_ доп. теги", default=True, on_change=oc),
                     Switch(key="underscore_tags_non", text="_ не переведённые теги", default=True, on_change=oc),
                 ]),
-            ])
+            ]),
+            Divider(),
+            Text(
+                text="Проверка и установка обновления",
+                icon="msg_update",
+                accent=True,
+                on_click=lambda v: self._check_and_install()
+            ),
         ]
+
+    ANILIST_GRAPHQL_URL = "https://graphql.anilist.co"
+    SHIKIMORI_API_ANIMES = "https://shikimori.one/api/animes"
+    GOOGLE_TRANSLATE_URL = "https://translate.googleapis.com/translate_a/single"
+    LIBRE_TRANSLATE_URL = "https://libretranslate.de/translate"
+
+    COUNTRY_BASE = {"JP": "Япония", "KR": "Корея", "CN": "Китай"}
+    COUNTRY_FLAG = {"JP": "🇯🇵", "KR": "🇰🇷", "CN": "🇨🇳"}
+    REVERSE_COUNTRY_MAP = {v.lower(): k for k, v in COUNTRY_BASE.items()}
+
+    SEASON_MAP = {"WINTER": "зима", "SPRING": "весна", "SUMMER": "лето", "FALL": "осень"}
+    REVERSE_SEASON_MAP = {v.lower(): k for k, v in SEASON_MAP.items()}
+
+    FORMAT_MAP = {"TV": "сериал","TV_SHORT": "короткий сериал","MOVIE": "фильм","OVA": "ova","ONA": "ona","SPECIAL": "спешл","MUSIC": "музыкальный"}
+    REVERSE_FORMAT_MAP = {v.lower(): k for k, v in FORMAT_MAP.items()}
+    REVERSE_FORMAT_MAP.update({v.lower().replace(" ", "_"): k for k, v in FORMAT_MAP.items()})
+
+    DEMOGRAPHIC_MAP = {"Shounen": "сёнэн","Shonen": "сёнэн","Shoujo": "сёдзё","Shojo": "сёдзё","Seinen": "сэйнэн","Josei": "дзёсэй","Kids": "детский"}
+
+    SEARCH_QUERY = """
+query ($search: String, $format: MediaFormat) {
+    Page(perPage: 1) {
+        media(search: $search, type: ANIME, format: $format, sort: SEARCH_MATCH) {
+            id title { romaji english native userPreferred } synonyms
+            countryOfOrigin season seasonYear format genres
+            tags { name rank isMediaSpoiler }
+        }
+    }
+}
+"""
+
+    MEDIA_QUERY = """
+query ($id: Int) {
+    Media(id: $id, type: ANIME) {
+        id title { romaji english native userPreferred } synonyms
+        countryOfOrigin season seasonYear format genres
+        tags { name rank isMediaSpoiler }
+    }
+}
+"""
+
+    MEDIA_BY_MAL_QUERY = """
+query ($idMal: Int) {
+    Media(idMal: $idMal, type: ANIME) {
+        id title { romaji english native userPreferred } synonyms
+        countryOfOrigin season seasonYear format genres
+        tags { name rank isMediaSpoiler }
+    }
+}
+"""
+
+    CRITERIA_QUERY = """
+query ($perPage: Int) {
+    Page(perPage: $perPage) {
+        media(type: ANIME, sort: POPULARITY_DESC) {
+            id title { romaji english native userPreferred } synonyms
+            countryOfOrigin season seasonYear format genres
+            tags { name rank isMediaSpoiler }
+        }
+    }
+}
+"""
 
     def _show_loading(self):
         fragment = get_last_fragment()
@@ -1011,7 +1041,7 @@ query ($perPage: Int) {
                     fragment = get_last_fragment()
                     BulletinHelper.show_success("Аниме найдено", fragment)
                 except Exception as e:
-                    print(f"AnimeSearch: ошибка отправки из кэша: {e}")
+                    self.log(f"Ошибка отправки из кэша: {e}")
 
                 return HookResult(strategy=HookStrategy.CANCEL)
 
@@ -1038,7 +1068,7 @@ query ($perPage: Int) {
                     run_on_ui_thread(lambda: send_message(send_params))
                     BulletinHelper.show_success("Аниме найдено", fragment)
                 except Exception as e:
-                    print(f"AnimeSearch: ошибка отправки: {e}")
+                    self.log(f"Ошибка отправки: {e}")
                     BulletinHelper.show_error("Ошибка отправки", fragment)
 
             def show_error_only(message: str = "Аниме не найдено"):
@@ -1116,7 +1146,7 @@ query ($perPage: Int) {
                     else:
                         show_error_only()
                 except Exception as e:
-                    print(f"AnimeSearch search error: {e}")
+                    self.log(f"Search error: {e}")
                     show_error_only("Ошибка при поиске")
 
             def process_cover():
@@ -1129,7 +1159,7 @@ query ($perPage: Int) {
                     else:
                         show_error_only()
                 except Exception as e:
-                    print(f"AnimeSearch cover error: {e}")
+                    self.log(f"Cover error: {e}")
                     show_error_only("Ошибка при получении обложки")
 
             def process_random():
@@ -1177,8 +1207,6 @@ query ($perPage: Int) {
                         if shiki_genres:
                             params["genre"] = ",".join(sorted(shiki_genres))
 
-                        print(f"AnimeSearch: Shikimori random params: {params}")
-
                         resp = requests.get(self.SHIKIMORI_API_ANIMES, params=params, headers={"User-Agent": "ExteraGram-AnimeSearch/1.0.0"}, timeout=10)
                         resp.raise_for_status()
                         candidates = resp.json()
@@ -1196,7 +1224,7 @@ query ($perPage: Int) {
                             else:
                                 show_error_only()
                 except Exception as e:
-                    print(f"AnimeSearch random error: {e}")
+                    self.log(f"Random error: {e}")
                     show_error_only("Ошибка при рандоме")
 
             try:
@@ -1207,12 +1235,12 @@ query ($perPage: Int) {
                 else:
                     run_on_queue(process_search)
             except Exception as e:
-                print(f"AnimeSearch queue error: {e}")
+                self.log(f"Queue error: {e}")
                 show_error_only("Ошибка при поиске")
 
             return HookResult(strategy=HookStrategy.CANCEL)
         except Exception as e:
-            print(f"AnimeSearch hook error: {e}")
+            self.log(f"Hook error: {e}")
             return HookResult()
 
 def fetch_anilist(search: Optional[str]) -> Optional[dict]:
