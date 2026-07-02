@@ -14,6 +14,15 @@
       "required": true
     },
     {
+      "id": "manga",
+      "name": "Поиск манги",
+      "version": "1.0.0",
+      "description": "Поиск и обработка манги",
+      "size": 6200,
+      "file": "manga.py",
+      "required": false
+    },
+    {
       "id": "random",
       "name": "Рандом",
       "version": "1.0.0",
