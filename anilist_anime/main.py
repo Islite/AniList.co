@@ -5,7 +5,10 @@ from base_plugin import BasePlugin, HookResult, HookStrategy
 from client_utils import get_last_fragment, run_on_queue
 from ui.bulletin import BulletinHelper
 
-from constants import BOOL_DEFAULTS_FALSE, BOOL_FLAGS, DEFAULT_TEMPLATE
+from constants import (
+    BOOL_DEFAULTS_FALSE, BOOL_FLAGS, DEFAULT_TEMPLATE, DEFAULT_LIST_TEMPLATE, 
+    DEFAULT_POPUP_TEMPLATE, ROUTING_KEYS
+)
 from mapping import MappingState
 from search import on_popup_select, process_multi_search, process_ongoing_search, process_search, send_card_and_desc
 from settings_ui import create_settings
@@ -112,24 +115,18 @@ class Anilist_Anime(BasePlugin):
             run_on_ui_thread(lambda: BulletinHelper.show_error(str(e), get_last_fragment()))
 
     def _show_popup(self, results, query, use_shiki, is_genre, account, base, ongoing=False):
-        try:
-            lm = int(self.get_setting("list_number_mode", 0) or 0)
-        except Exception:
-            lm = 0
-        lc = str(self.get_setting("list_number_custom", "•") or "•")
-        try:
-            csm = int(getattr(self, "card_send_mode", 0) or 0)
-        except Exception:
-            csm = 0
-        try:
-            pp = int(getattr(self, "preview_pos", 0) or 0)
-        except Exception:
-            pp = 0
-        try:
-            mp = int(getattr(self, "media_pos", 0) or 0)
-        except Exception:
-            mp = 0
-        show_popup(results, query, use_shiki, is_genre, account, base, self._on_popup_select, ongoing=ongoing, list_num_mode=lm, list_num_custom=lc, card_send_mode=csm, preview_pos=pp, media_pos=mp)
+        lm = gi(self, "list_number_mode", 0)
+        lc = gs(self, "list_number_custom", "•")
+        csm = getattr(self, "card_send_mode", 0) or 0
+        pp = getattr(self, "preview_pos", 0) or 0
+        mp = getattr(self, "media_pos", 0) or 0
+        pt = gs(self, "popup_template", DEFAULT_POPUP_TEMPLATE) or DEFAULT_POPUP_TEMPLATE
+        lt = gs(self, "list_template", DEFAULT_LIST_TEMPLATE) or DEFAULT_LIST_TEMPLATE
+        show_popup(
+            results, query, use_shiki, is_genre, account, base, self._on_popup_select,
+            ongoing=ongoing, list_num_mode=lm, list_num_custom=lc, card_send_mode=csm,
+            preview_pos=pp, media_pos=mp, popup_template=pt, list_template=lt
+        )
 
     def on_send_message_hook(self, account, params):
         try:
@@ -139,23 +136,18 @@ class Anilist_Anime(BasePlugin):
             self.update_settings()
             cleanup_old_cache(self.search_cache)
             msg = (params.message or "").strip()
-            if not msg:
-                return HookResult()
-            # не перехватывать чистые URL (WebpageBot / обложки)
-            if msg.startswith("http://") or msg.startswith("https://"):
+            if not msg or msg.startswith("http://") or msg.startswith("https://"):
                 return HookResult()
             msg_lower = msg.lower()
             if msg_lower in self.template_commands or any(msg_lower == c or msg_lower.startswith(c + " ") for c in self.template_commands):
                 run_on_ui_thread(self.open_template_editor)
                 return HookResult(strategy=HookStrategy.CANCEL)
             base = {"peer": params.peer}
-            if hasattr(params, "replyToMsg"):
-                base["replyToMsg"] = params.replyToMsg
-            if hasattr(params, "replyToTopMsg"):
-                base["replyToTopMsg"] = params.replyToTopMsg
-            if hasattr(params, "messageThreadId"):
-                base["messageThreadId"] = params.messageThreadId
-
+            for key in ROUTING_KEYS:
+                if hasattr(params, key):
+                    val = getattr(params, key)
+                    if val is not None:
+                        base[key] = val
             is_tag_cmd = False
             cmd = parse_cmd(msg_lower, msg, self.tag_commands)
             if cmd:
@@ -164,7 +156,6 @@ class Anilist_Anime(BasePlugin):
                 cmd = parse_cmd(msg_lower, msg, self.commands.get("anime", set()))
             if not cmd:
                 return HookResult()
-
             show_info("Поиск начат...")
             query = msg[len(cmd):].lstrip()
             reply_text = ""
@@ -174,15 +165,13 @@ class Anilist_Anime(BasePlugin):
                     reply_text = getattr(rm.messageOwner, "message", "") or ""
             if not query.strip() and reply_text:
                 query = reply_text
-
             qcheck = query.strip().lower().lstrip(".")
-            if qcheck in self.ongoing_commands or (not qcheck and False):
+            if qcheck in self.ongoing_commands:
                 run_on_queue(lambda: process_ongoing_search(
                     self, account, base, self.search_cache, self.mapping,
                     self._show_popup, self._on_popup_select,
                 ))
                 return HookResult(strategy=HookStrategy.CANCEL)
-
             if is_tag_cmd:
                 q = query.strip()
                 if not q:
@@ -192,7 +181,6 @@ class Anilist_Anime(BasePlugin):
                     self._show_popup, self._on_popup_select,
                 ))
                 return HookResult(strategy=HookStrategy.CANCEL)
-
             if self.search_ui_mode == 0:
                 q, is_genre = self._parse_query_genre(query)
                 if not q:
@@ -202,8 +190,7 @@ class Anilist_Anime(BasePlugin):
                     self._show_popup, self._on_popup_select,
                 ))
                 return HookResult(strategy=HookStrategy.CANCEL)
-
-            orig = [re.sub(r"\[­\]\(https://img\.anili\.st/media/\d+\)", "", query.replace("\u00AD", "")).strip()]
+            orig = [re.sub(r"\[­\]\(https://img\.anili\.st/media/\d+\)", "", query.replace("­", "")).strip()]
             if "\n" in query:
                 lines = [l.strip() for l in query.split("\n") if l.strip()]
                 orig = []
@@ -221,6 +208,5 @@ class Anilist_Anime(BasePlugin):
             run_on_queue(lambda: process_search(self, account, base, orig, self.search_cache, self.mapping))
             return HookResult(strategy=HookStrategy.CANCEL)
         except Exception:
-            pass
             run_on_ui_thread(lambda: BulletinHelper.show_error("Ошибка запуска команды", get_last_fragment()))
             return HookResult()

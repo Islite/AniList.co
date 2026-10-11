@@ -1,7 +1,5 @@
 import json
-
 import requests
-
 from constants import DEFAULT_MAPPING
 from utils import gb
 
@@ -18,7 +16,6 @@ class MappingState:
         self.sep_under = {}
         self.sep_comma = {}
         self._last_mapping_raw = None
-        self._shiki_alias = None
         self._anilist_alias = None
 
     def load(self, force=False):
@@ -36,11 +33,10 @@ class MappingState:
                 else:
                     data = json.loads(raw)
             except Exception:
-                pass
                 data = {}
         self.universal_mapping = data if isinstance(data, dict) else {}
         self._extract_separators()
-        self._shiki_alias = self._anilist_alias = None
+        self._anilist_alias = None
 
     def _extract_separators(self):
         sep = self.universal_mapping.get("separator", {})
@@ -87,27 +83,8 @@ class MappingState:
         return True
 
     def ensure_aliases(self):
-        if self._shiki_alias is not None:
+        if self._anilist_alias is not None:
             return
-        self._shiki_alias = {}
-        for en_name, meta in (self.universal_mapping.get("shikimori") or {}).items():
-            if not isinstance(meta, dict):
-                continue
-            gid = meta.get("id")
-            if gid is None:
-                continue
-            try:
-                gid = int(gid)
-            except (TypeError, ValueError):
-                continue
-            rus = meta.get("russian") or []
-            if not isinstance(rus, list):
-                rus = [rus] if rus else []
-            entry = {"id": gid, "en": en_name}
-            self._shiki_alias[en_name.lower()] = entry
-            for a in rus:
-                if a:
-                    self._shiki_alias[str(a).lower()] = entry
         self._anilist_alias = {}
         for section in ("main_genres", "additional_genres", "main_tags", "additional_tags"):
             kind = "tag" if "tag" in section else "genre"
@@ -118,17 +95,6 @@ class MappingState:
                 for a in alias_list:
                     if a:
                         self._anilist_alias[str(a).lower()] = entry
-
-    def resolve_shiki_genre(self, query):
-        self.ensure_aliases()
-        q = query.lower().strip()
-        if q in self._shiki_alias:
-            e = self._shiki_alias[q]
-            return e["id"], e["en"]
-        for key, e in self._shiki_alias.items():
-            if q in key or key in q:
-                return e["id"], e["en"]
-        return None, None
 
     def resolve_anilist_genre(self, query):
         self.ensure_aliases()

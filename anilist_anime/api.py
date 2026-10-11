@@ -1,13 +1,11 @@
 import time
 from datetime import datetime
 import requests
-
 from constants import (
     ANILIST_GRAPHQL_URL, QUERIES, SHIKIMORI_GRAPHQL_URL,
-    SHIKI_QSS, SHIKI_QID, SHIKI_QG, SHIKI_QSO, SHIKI_QSO2,
+    SHIKI_QSS, SHIKI_QID, SHIKI_QSO, SHIKI_QSO2,
 )
 
-# Заголовки, имитирующие браузерный запрос для обхода защиты Cloudflare
 _H = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
     "Content-Type": "application/json",
@@ -16,10 +14,13 @@ _H = {
     "Referer": "https://anilist.co/",
 }
 
+_session = requests.Session()
+_session.headers.update(_H)
+
 def gql(url, q, v, tag="api", rt=2):
     for i in range(rt + 1):
         try:
-            r = requests.post(url, json={"query": q, "variables": v}, headers=_H, timeout=10)
+            r = _session.post(url, json={"query": q, "variables": v}, timeout=10)
             sc = r.status_code
             if sc == 403:
                 return None, tag + "_disabled"
@@ -28,26 +29,39 @@ def gql(url, q, v, tag="api", rt=2):
                     time.sleep(1)
                     continue
                 return None, tag + "_rate"
+            try:
+                d = r.json()
+            except Exception:
+                d = None
+            if d:
+                if d.get("errors") and not d.get("data"):
+                    return None, tag + "_error"
+                if d.get("data"):
+                    return d.get("data"), None
             if sc >= 400:
                 return None, tag + "_error"
-            d = r.json()
-            if d.get("errors") and not d.get("data"):
-                return None, tag + "_error"
-            return d.get("data") or {}, None
+            return {}, None
         except Exception:
             if i == rt:
                 return None, tag + "_error"
             time.sleep(0.5)
     return None, tag + "_error"
 
+def _norm_anilist(item):
+    if not item:
+        return item
+    if isinstance(item, list):
+        return [_norm_anilist(i) for i in item]
+    return item
+
 def fetch_anilist_data(query_str, variables):
     d, e = gql(ANILIST_GRAPHQL_URL, query_str, variables, "anilist")
     if e or not d:
         return None
     if "Media" in d:
-        return d["Media"]
+        return _norm_anilist(d["Media"])
     if "Page" in d and d["Page"].get("media"):
-        return d["Page"]["media"][0]
+        return _norm_anilist(d["Page"]["media"][0])
     return None
 
 def fetch_by_id(anime_id):
@@ -59,6 +73,23 @@ def fetch_by_mal_id(mal_id):
 def fetch_anilist(search):
     return fetch_anilist_data(QUERIES["search"], {"search": search})
 
+def _norm_shiki(item):
+    if not item or not isinstance(item, dict):
+        return item
+    if "seasonYear" not in item or not item["seasonYear"]:
+        ao = item.get("airedOn") or {}
+        if isinstance(ao, dict) and ao.get("year"):
+            item["seasonYear"] = ao.get("year")
+        else:
+            shiki_season = item.get("season")
+            if shiki_season and isinstance(shiki_season, str) and "_" in shiki_season:
+                parts = shiki_season.split("_")
+                if len(parts) > 1 and parts[1].isdigit():
+                    item["seasonYear"] = int(parts[1])
+    if item.get("season"):
+        item["season"] = str(item["season"]).split("_")[0].upper()
+    return item
+
 def search_shikimori_by_id(aid, cache):
     ck = f"shiki_id_{aid}"
     if ck in cache:
@@ -68,7 +99,7 @@ def search_shikimori_by_id(aid, cache):
         cache[ck] = None
         return None
     items = d.get("animes") or []
-    result = items[0] if items else None
+    result = _norm_shiki(items[0]) if items else None
     cache[ck] = result
     return result
 
@@ -76,7 +107,8 @@ def search_shikimori_gql(query):
     d, e = gql(SHIKIMORI_GRAPHQL_URL, SHIKI_QSS, {"q": query}, "shiki")
     if e:
         return None, e
-    return d.get("animes") or [], None
+    items = d.get("animes") or []
+    return [_norm_shiki(i) for i in items], None
 
 def search_shikimori(query, cache):
     q = str(query).strip()
@@ -93,60 +125,37 @@ def search_shikimori(query, cache):
     cache[ck] = result
     return result
 
-def fetch_shiki_cover_rest(aid, cache=None):
-    """Точечный REST только за image, если GraphQL не отдал poster. Кэш по id."""
-    if cache is None:
-        cache = {}
-    ck = f"shiki_cover_rest_{aid}"
-    if ck in cache:
-        return cache[ck]
-    try:
-        r = requests.get(
-            f"https://shikimori.io/api/animes/{aid}",
-            headers={"User-Agent": _H["User-Agent"], "Accept": "application/json"},
-            timeout=6,
-        )
-        if r.status_code == 200:
-            data = r.json() or {}
-            img = data.get("image")
-            if isinstance(img, dict) and (img.get("original") or img.get("preview")):
-                cache[ck] = img
-                return img
-    except Exception:
-        pass
-    cache[ck] = None
-    return None
-
 def enrich_shiki_poster(shiki, cache=None):
-    """Если в GraphQL-ответе нет poster — подтянуть image из REST один раз."""
     if not shiki or not isinstance(shiki, dict):
         return shiki
-    from formatter import _shiki_cover
-    if _shiki_cover(shiki):
+    poster = shiki.get("poster")
+    if isinstance(poster, dict) and (poster.get("originalUrl") or poster.get("mainUrl")):
         return shiki
-    aid = shiki.get("id")
-    if aid is None:
-        return shiki
-    img = fetch_shiki_cover_rest(aid, cache if cache is not None else {})
-    if not img:
+    image = shiki.get("image")
+    if isinstance(image, dict) and (image.get("original") or image.get("preview")):
         return shiki
     out = dict(shiki)
-    out["image"] = img
+    fallback = "https://shikimori.io/assets/globals/missing/main@2x.png"
+    if "poster" not in out or not out["poster"]:
+        out["poster"] = {"originalUrl": fallback}
+    if "image" not in out or not out["image"]:
+        out["image"] = {"original": fallback, "preview": fallback}
     return out
 
 def multi_search_anilist(query):
     d, e = gql(ANILIST_GRAPHQL_URL, QUERIES["multi_search"], {"q": query}, "anilist")
     if e or not d:
         return None
-    return d.get("Page", {}).get("media", []) or []
+    media = d.get("Page", {}).get("media", []) or []
+    return [_norm_anilist(m) for m in media]
 
 def multi_search_anilist_genre(name, force_tag=False):
     def run(qstr):
         d, e = gql(ANILIST_GRAPHQL_URL, qstr, {"g": name}, "anilist")
         if e or not d:
             return None
-        return d.get("Page", {}).get("media", []) or []
-
+        media = d.get("Page", {}).get("media", []) or []
+        return [_norm_anilist(m) for m in media]
     first, second = (QUERIES["multi_tag"], QUERIES["multi_genre"]) if force_tag else (QUERIES["multi_genre"], QUERIES["multi_tag"])
     media = run(first)
     if media is None:
@@ -165,22 +174,10 @@ def multi_search_shikimori(query):
         return None
     return items or []
 
-def multi_search_shikimori_genre(genre_id):
-    d, e = gql(SHIKIMORI_GRAPHQL_URL, SHIKI_QG, {"g": str(genre_id), "p": 1}, "shiki")
-    if e or not d:
-        return None
-    return d.get("animes") or []
-
 def current_season():
     n = datetime.utcnow()
-    m, y = n.month, n.year
-    if m in (1, 2, 3):
-        return "WINTER", y
-    if m in (4, 5, 6):
-        return "SPRING", y
-    if m in (7, 8, 9):
-        return "SUMMER", y
-    return "FALL", y
+    seasons = ["WINTER", "SPRING", "SUMMER", "FALL"]
+    return seasons[(n.month - 1) // 3], n.year
 
 def fetch_ongoing_anilist(max_pages=4):
     s, y = current_season()
@@ -198,7 +195,7 @@ def fetch_ongoing_anilist(max_pages=4):
             mid = m.get("id")
             if mid and mid not in seen:
                 seen.add(mid)
-                out.append(m)
+                out.append(_norm_anilist(m))
         if not (page.get("pageInfo") or {}).get("hasNextPage"):
             break
     return out
@@ -219,7 +216,7 @@ def _sh_on_pages(q, vkey, vmax=4):
             mid = m.get("id")
             if mid and mid not in seen:
                 seen.add(mid)
-                out.append(m)
+                out.append(_norm_shiki(m))
         if len(media) < 50:
             break
     return out, err

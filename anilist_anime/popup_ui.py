@@ -9,6 +9,18 @@ from org.telegram.ui.Components import BackupImageView, LayoutHelper
 from java import dynamic_proxy
 from android.graphics import PorterDuff, PorterDuffColorFilter
 
+from constants import (
+    DAYS,
+    POPUP_SECTION_ID_LABEL, POPUP_SECTION_NAME_LABEL, POPUP_ROW_SUBTITLE_TEMPLATE,
+    POPUP_BTN_CLOSE, POPUP_BTN_CLEAR, POPUP_BTN_SELECT_ALL, POPUP_BTN_SELECT_BETWEEN,
+    POPUP_BTN_LIST, POPUP_BTN_SEND, POPUP_MSG_NOTHING_SELECTED, POPUP_MSG_EMPTY,
+    POPUP_MSG_SENT_TEXT, POPUP_ERR_NO_ACTIVITY, POPUP_CONFIRM_TITLE, POPUP_CONFIRM_MSG,
+    POPUP_LABEL_COVER_PREFIX, POPUP_COVER_DEFAULT, POPUP_COVER_BELOW, POPUP_COVER_ABOVE,
+    POPUP_MENU_MEDIA, POPUP_MENU_PREVIEW, POPUP_MENU_NOLINK,
+    POPUP_TITLE_SEARCH_ONG_Q, POPUP_TITLE_SEARCH_ONG, POPUP_TITLE_SEARCH_Q, POPUP_TITLE_SEARCH,
+)
+from formatter import format_popup_row_subtitle, build_list_text_chunks
+
 L = find_class("android.widget.LinearLayout")
 F = find_class("android.widget.FrameLayout")
 S = find_class("android.widget.ScrollView")
@@ -25,8 +37,6 @@ IV = find_class("android.widget.ImageView")
 CC = find_class("androidx.core.content.ContextCompat")
 RD = find_class("org.telegram.messenger.R$drawable")
 Ru = find_class("java.lang.Runnable")
-
-DAYS = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
 
 def dp(x):
     return AndroidUtilities.dp(x)
@@ -77,25 +87,16 @@ def ico(n):
     except Exception:
         return 0
 
-def epl(r):
-    ea, et = r.get("episodes_aired"), r.get("episodes")
-    try:
-        if ea is not None and int(ea or 0) > 0:
-            return f"{int(ea)}/{int(et)} эп." if et and int(et) > 0 else f"{int(ea)}/? эп."
-    except Exception:
-        pass
-    return f"эп. {r.get('episode')}" if r.get("episode") is not None else ""
-
 _CTRL = None
 
-def show_popup(results, query, use_shiki, is_genre, account, base, on_select, ongoing=False, list_num_mode=0, list_num_custom="•", card_send_mode=0, preview_pos=0, media_pos=0):
+def show_popup(results, query, use_shiki, is_genre, account, base, on_select, ongoing=False, list_num_mode=0, list_num_custom="•", card_send_mode=0, preview_pos=0, media_pos=0, popup_template=None, list_template=None):
     global _CTRL
-    ctrl = _SearchUI(results, query, use_shiki, is_genre, account, base, on_select, ongoing, list_num_mode, list_num_custom, card_send_mode, preview_pos, media_pos)
+    ctrl = _SearchUI(results, query, use_shiki, is_genre, account, base, on_select, ongoing, list_num_mode, list_num_custom, card_send_mode, preview_pos, media_pos, popup_template, list_template)
     _CTRL = ctrl
     run_on_ui_thread(ctrl.show)
 
 class _SearchUI:
-    def __init__(self, results, query, use_shiki, is_genre, account, base, on_select, ongoing=False, list_num_mode=0, list_num_custom="•", card_send_mode=0, preview_pos=0, media_pos=0):
+    def __init__(self, results, query, use_shiki, is_genre, account, base, on_select, ongoing=False, list_num_mode=0, list_num_custom="•", card_send_mode=0, preview_pos=0, media_pos=0, popup_template=None, list_template=None):
         self._res = list(results or [])
         self._q = query or ""
         self._src = "Shikimori" if use_shiki else "AniList"
@@ -109,6 +110,8 @@ class _SearchUI:
         self._plugin_card_mode = int(card_send_mode or 0)
         self._plugin_preview_pos = int(preview_pos or 0)
         self._plugin_media_pos = int(media_pos or 0)
+        self._popup_template = popup_template or POPUP_ROW_SUBTITLE_TEMPLATE
+        self._list_template = list_template or "{num}. <code>{title}</code>"
         self._a = None
         self.current_dialog = None
         self._items = []
@@ -142,13 +145,13 @@ class _SearchUI:
             for i, r in enumerate(self._res):
                 sec = r.get("_section")
                 if sec and sec != last_sec:
-                    label = "По ID" if sec == "id" else "Совпадения по названию"
+                    label = POPUP_SECTION_ID_LABEL if sec == "id" else POPUP_SECTION_NAME_LABEL
                     self._items.append({"t": "h", "x": label})
                     last_sec = sec
                 self._items.append({"t": "i", "i": i, "r": r})
             return
         if has_id and not has_name:
-            self._items.append({"t": "h", "x": "По ID"})
+            self._items.append({"t": "h", "x": POPUP_SECTION_ID_LABEL})
         self._items += [{"t": "i", "i": i, "r": r} for i, r in enumerate(self._res)]
 
     def _lic(self, a, n, c=None):
@@ -159,7 +162,7 @@ class _SearchUI:
             d = CC.getDrawable(a, rid)
             if d is not None and c is not None:
                 d = d.mutate()
-                d.setColorFilter(PorterDuffColorFilter(jc(c), PorterDuff.Mode.SRC_IN))
+                d.setColorFilter(jc(c), PorterDuff.Mode.SRC_IN)
             return d
         except Exception:
             return None
@@ -267,24 +270,18 @@ class _SearchUI:
         col = L(a)
         col.setOrientation(1)
         g = th(Theme.key_windowBackgroundWhiteGrayText)
-
         def tv(x, sz=14, cr=None):
             v = T(a)
             v.setText(x)
             v.setTextSize(TypedValue.COMPLEX_UNIT_DIP, sz)
             v.setTextColor(cr if cr is not None else g)
             return v
-
         col.addView(tv(res.get("title") or "—", 16, th(Theme.key_windowBackgroundWhiteBlackText)))
-        col.addView(tv(f"{res.get('type_ru', '')}, {res.get('score', '?')}/10"))
-        if res.get("country_line"):
-            col.addView(tv(res["country_line"]))
-        gens = res.get("genres") or []
-        if gens:
-            col.addView(tv(", ".join(gens[:4])))
-        e = epl(res)
-        if e:
-            col.addView(tv(e, 13))
+        
+        sub_text = format_popup_row_subtitle(res, self._popup_template)
+        if sub_text:
+            col.addView(tv(sub_text))
+
         row.addView(col, LayoutHelper.createLinear(0, -2, 1.0))
         row.setOnClickListener(OnClickListener(lambda v, i=idx: self._clk(i)))
         row.setOnLongClickListener(OnLongClickListener(lambda v, i=idx: (self._lng(i), True)[1]))
@@ -394,7 +391,7 @@ class _SearchUI:
             fr.setBackground(rect(tha(Theme.key_chat_messagePanelSend, 0xE6), 24))
         fr.setPadding(dp(24), dp(12), dp(24), dp(12))
         t = T(a)
-        t.setText("Закрыть")
+        t.setText(POPUP_BTN_CLOSE)
         t.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 17)
         try:
             t.setTypeface(AndroidUtilities.getTypeface("fonts/rmedium.ttf"))
@@ -489,7 +486,6 @@ class _SearchUI:
                 return
             act = self._a
             close = self._cf
-
             def build():
                 try:
                     self._bar.removeAllViews()
@@ -500,7 +496,7 @@ class _SearchUI:
                     self._bar.setPadding(dp(8), dp(10), dp(8), dp(14))
                     nf = tha(Theme.key_windowBackgroundWhite, 0xE6)
                     ni = th(Theme.key_windowBackgroundWhiteBlackText)
-                    self._bx = self._ib(act, "msg_close", self._cl, 44, nf, ni, "Закрыть")
+                    self._bx = self._ib(act, "msg_close", self._cl, 44, nf, ni, POPUP_BTN_CLOSE)
                     self._bx.setLayoutParams(lp(dp(44), dp(44), 0, 4, 0, 8, 0))
                     self._bar.addView(self._bx)
                     ov = L(act)
@@ -513,17 +509,17 @@ class _SearchUI:
                     ov.setBackground(rect(nf, 22))
                     ov.setPadding(dp(6), dp(4), dp(6), dp(4))
                     ov.setLayoutParams(lp(-2, dp(48), 0, 0, 0, 8, 0))
-                    self._bcl = self._ob(act, "msg_clear", self._clr, "очистить")
+                    self._bcl = self._ob(act, "msg_clear", self._clr, POPUP_BTN_CLEAR)
                     ov.addView(self._bcl)
-                    self._ball = self._ob(act, "msg_list", self._all, "Выбрать всё")
+                    self._ball = self._ob(act, "msg_list", self._all, POPUP_BTN_SELECT_ALL)
                     ov.addView(self._ball)
-                    self._bb = self._ob(act, "select_between", self._bet, "Выбрать между")
+                    self._bb = self._ob(act, "select_between", self._bet, POPUP_BTN_SELECT_BETWEEN)
                     ov.addView(self._bb)
                     self._bar.addView(ov)
                     sp = V(act)
                     sp.setLayoutParams(lp(0, 1, 1.))
                     self._bar.addView(sp)
-                    self._bl = self._ib(act, "msg_filled_data_messages", lambda: self._req("list"), 44, nf, ni, "Список")
+                    self._bl = self._ib(act, "msg_filled_data_messages", lambda: self._req("list"), 44, nf, ni, POPUP_BTN_LIST)
                     self._bl.setLayoutParams(lp(dp(44), dp(44), 0, 0, 0, 6, 0))
                     self._bc = self._ib(act, "send_extera_24", lambda: self._req("card"), 44, nf, ni)
                     self._bc.setLayoutParams(lp(dp(44), dp(44), 0, 0, 0, 4, 0))
@@ -551,7 +547,6 @@ class _SearchUI:
                         BulletinHelper.show_error(str(e))
                     except Exception:
                         pass
-
             if close is not None:
                 self._ao(close, build)
             else:
@@ -565,7 +560,6 @@ class _SearchUI:
                 return
             self._multi = False
             views = self._kids()
-
             def done():
                 try:
                     self._bar.removeAllViews()
@@ -579,16 +573,13 @@ class _SearchUI:
                     self._ai(self._cf)
                 except Exception:
                     pass
-
             if views:
                 c = [0]
                 t = len(views)
-
                 def one():
                     c[0] += 1
                     if c[0] >= t:
                         done()
-
                 for v in views:
                     self._ao(v, one)
             else:
@@ -638,7 +629,6 @@ class _SearchUI:
             lb, cb = self._bl, self._bc
             self._sw = True
             done = [0]
-
             def fin():
                 done[0] += 1
                 if done[0] < 2:
@@ -671,7 +661,6 @@ class _SearchUI:
                 except Exception:
                     pass
                 self._sw = False
-
             self._ao(lb, fin)
             self._ao(cb, fin)
         except Exception:
@@ -738,11 +727,10 @@ class _SearchUI:
 
     def _pos_label(self):
         if self._temp_pos is None:
-            return "По умолчанию"
-        return "Снизу" if self._temp_pos == 1 else "Сверху"
+            return POPUP_COVER_DEFAULT
+        return POPUP_COVER_BELOW if self._temp_pos == 1 else POPUP_COVER_ABOVE
 
     def _cycle_pos(self):
-        # По умолчанию → Снизу → Сверху → По умолчанию
         if self._temp_pos is None:
             self._temp_pos = 1
         elif self._temp_pos == 1:
@@ -750,36 +738,10 @@ class _SearchUI:
         else:
             self._temp_pos = None
 
-    def _pos(self, media=0):
-        if self._temp_pos is not None:
-            return self._temp_pos
-        try:
-            if media:
-                return int(getattr(self, "_plugin_media_pos", 0) or 0)
-            return int(getattr(self, "_plugin_preview_pos", 0) or 0)
-        except Exception:
-            return 0
-
-    def _inv(self, media=0):
-        # temp: 0=Сверху, 1=Снизу (лейблы меню общие)
-        # у media и preview разная полярность invert относительно лейбла
-        if self._temp_pos is not None:
-            if media:
-                # media: Сверху→False, Снизу→True
-                return self._temp_pos == 1
-            # preview: Сверху→True, Снизу→False
-            return self._temp_pos == 0
-        p = self._pos(media)
-        if media:
-            # media items=["Сверху","Снизу"]: 0→False, 1→True
-            return p == 1
-        # preview items=["Снизу","Сверху"]: 0→False, 1→True
-        return p == 1
-
     def _req(self, mode):
         n = len(self._sel)
         if n <= 0:
-            BulletinHelper.show_info("Ничего не выбрано")
+            BulletinHelper.show_info(POPUP_MSG_NOTHING_SELECTED)
             return
         if mode == "card" and n >= 2:
             self._conf()
@@ -799,7 +761,7 @@ class _SearchUI:
             return
         if mode == "nolink":
             self._force_nolink = True
-            self._force_mode = 1
+            self._force_mode = 0
             self._scards()
             return
         self._scards()
@@ -809,27 +771,24 @@ class _SearchUI:
             from ui.alert import AlertDialogBuilder
             act = self._a or ((get_last_fragment().getParentActivity()) if get_last_fragment() else None)
             if not act:
-                BulletinHelper.show_error("Activity not found")
+                BulletinHelper.show_error(POPUP_ERR_NO_ACTIVITY)
                 return
             b = AlertDialogBuilder(act)
-            b.set_title("Подтверждение")
-            b.set_message("Отправка нескольких карточек может занять много времени")
-
+            b.set_title(POPUP_CONFIRM_TITLE)
+            b.set_message(POPUP_CONFIRM_MSG)
             def ok(bld, w):
                 try:
                     bld.dismiss()
                 except Exception:
                     pass
                 self._scards()
-
             def cancel(bld, w):
                 try:
                     bld.dismiss()
                 except Exception:
                     pass
-
-            b.set_positive_button("Отправить", ok)
-            b.set_negative_button("Закрыть", cancel)
+            b.set_positive_button(POPUP_BTN_SEND, ok)
+            b.set_negative_button(POPUP_BTN_CLOSE, cancel)
             b.set_cancelable(True)
             b.show()
         except Exception as e:
@@ -839,10 +798,8 @@ class _SearchUI:
         mode = getattr(self, "_force_mode", None)
         if mode is None:
             mode = self._mode()
-        media = 1 if int(mode) == 1 else 0
         return {
             "card_send_mode": int(mode),
-            "invert": bool(self._inv(media)),
             "no_link": bool(getattr(self, "_force_nolink", False)),
             "temp_pos": self._temp_pos,
         }
@@ -854,23 +811,11 @@ class _SearchUI:
             opts = self._send_opts()
             self._force_mode = None
             self._force_nolink = False
-            self._temp_pos = None
             self._cl()
             for res in items:
                 run_on_queue(lambda r=res, o=opts: self._on_select(r, self._account, self._base, o))
         except Exception as e:
             BulletinHelper.show_error(str(e))
-
-
-
-
-
-
-
-
-
-
-
 
     def _show_card_menu(self, anchor):
         try:
@@ -922,7 +867,7 @@ class _SearchUI:
                 except Exception:
                     pass
                 try:
-                    BulletinHelper.show_info("Обложка: " + self._pos_label())
+                    BulletinHelper.show_info(POPUP_LABEL_COVER_PREFIX + self._pos_label())
                 except Exception:
                     pass
                 def reopen():
@@ -940,103 +885,30 @@ class _SearchUI:
                 except Exception:
                     pass
                 self._req(m)
-            options.add(int(irpos), "Обложка: " + self._pos_label(), R(do_cycle))
+            options.add(int(irpos), POPUP_LABEL_COVER_PREFIX + self._pos_label(), R(do_cycle))
             if mode == 0:
-                options.add(int(irm), "Медиа", R(lambda: do_send("media")))
+                options.add(int(irm), POPUP_MENU_MEDIA, R(lambda: do_send("media")))
             else:
-                options.add(int(irp), "Превью", R(lambda: do_send("preview")))
-            options.add(int(irn), "Без ссылки", R(lambda: do_send("nolink")))
+                options.add(int(irp), POPUP_MENU_PREVIEW, R(lambda: do_send("preview")))
+            options.add(int(irn), POPUP_MENU_NOLINK, R(lambda: do_send("nolink")))
             options.show()
         except Exception as e:
             BulletinHelper.show_error(str(e))
-
 
     def _slist(self):
         try:
             from client_utils import send_text
             o = sorted(self._sel)
             if not o:
-                BulletinHelper.show_error("Пусто")
+                BulletinHelper.show_error(POPUP_MSG_EMPTY)
                 return
             src_label = "Shikimori" if "Shikimori" in str(self._src) else "AniList"
-            if self._ong:
-                header = "%s поиск: онгоинги <code>%s</code>" % (src_label, self._q) if self._q else "%s поиск: онгоинги" % src_label
-            else:
-                header = "%s поиск: <code>%s</code>" % (src_label, self._q) if self._q else "%s поиск" % src_label
-            def _num(i, t):
-                try:
-                    mode = int(getattr(self, "_list_num_mode", 0) or 0)
-                except Exception:
-                    mode = 0
-                custom = getattr(self, "_list_num_custom", "•") or "•"
-                if mode == 2:
-                    return t
-                if mode == 1:
-                    return "%s %s" % (custom, t)
-                return "%d. %s" % (i + 1, t)
-            parts = [header]
-            counter = [0]
-            def add_title(title):
-                n = counter[0]
-                counter[0] = n + 1
-                try:
-                    mode = int(getattr(self, "_list_num_mode", 0) or 0)
-                except Exception:
-                    mode = 0
-                custom = getattr(self, "_list_num_custom", "•") or "•"
-                if mode == 2:
-                    return "<code>%s</code>" % title
-                if mode == 1:
-                    return "%s <code>%s</code>" % (custom, title)
-                return "%d. <code>%s</code>" % (n + 1, title)
-            if self._ong:
-                by = {}
-                for i in o:
-                    if 0 <= i < len(self._res):
-                        r = self._res[i]
-                        d = r.get("day")
-                        key = d if d is not None else -1
-                        by.setdefault(key, []).append(r.get("title") or "—")
-                for d in sorted(by.keys(), key=lambda x: 9 if x < 0 else x):
-                    titles = by[d]
-                    mono = "\n".join(add_title(tt) for tt in titles)
-                    if d >= 0 and d < 7:
-                        parts.append(DAYS[d])
-                        parts.append("<blockquote expandable>%s</blockquote>" % mono)
-                    else:
-                        parts.append("<blockquote expandable>%s</blockquote>" % mono)
-            else:
-                has_id = any(self._res[i].get("_section") == "id" for i in o if 0 <= i < len(self._res))
-                has_name = any(self._res[i].get("_section") == "name" for i in o if 0 <= i < len(self._res))
-                if has_id and has_name:
-                    id_titles = [self._res[i].get("title") or "—" for i in o if 0 <= i < len(self._res) and self._res[i].get("_section") == "id"]
-                    name_titles = [self._res[i].get("title") or "—" for i in o if 0 <= i < len(self._res) and self._res[i].get("_section") == "name"]
-                    if id_titles:
-                        parts.append("По ID")
-                        parts.append("<blockquote expandable>%s</blockquote>" % ("\n".join(add_title(tt) for tt in id_titles)))
-                    if name_titles:
-                        parts.append("Совпадения по названию")
-                        parts.append("<blockquote expandable>%s</blockquote>" % ("\n".join(add_title(tt) for tt in name_titles)))
-                else:
-                    titles = [self._res[i].get("title") or "—" for i in o if 0 <= i < len(self._res)]
-                    parts.append("<blockquote expandable>%s</blockquote>" % ("\n".join(add_title(tt) for tt in titles)))
-            LIMIT = 3500
-            chunks = []
-            cur = []
-            cur_len = 0
-            for part in parts:
-                pl = len(part) + 1
-                if cur and cur_len + pl > LIMIT:
-                    chunks.append("\n".join(cur))
-                    cur = [part]
-                    cur_len = pl
-                else:
-                    cur.append(part)
-                    cur_len += pl
-            if cur:
-                chunks.append("\n".join(cur))
+            chunks = build_list_text_chunks(
+                self._res, self._sel, self._q, src_label, self._ong,
+                self._list_template, self._list_num_custom
+            )
             if not chunks or not any(c.strip() for c in chunks):
-                BulletinHelper.show_error("Пусто")
+                BulletinHelper.show_error(POPUP_MSG_EMPTY)
                 return
             self._cl()
             try:
@@ -1051,7 +923,7 @@ class _SearchUI:
                         send_text(body)
                 except Exception:
                     pass
-            BulletinHelper.show_success("Отправлено текстом")
+            BulletinHelper.show_success(POPUP_MSG_SENT_TEXT)
         except Exception as e:
             BulletinHelper.show_error(str(e))
 
@@ -1162,9 +1034,9 @@ class _SearchUI:
             src_l = "Shikimori" if "Shikimori" in str(self._src) else "AniList"
             qtxt = str(self._q or "")
             if self._ong:
-                title.setText("%s поиск: онгоинги %s" % (src_l, qtxt) if qtxt else "%s поиск: онгоинги" % src_l)
+                title.setText(POPUP_TITLE_SEARCH_ONG_Q % (src_l, qtxt) if qtxt else POPUP_TITLE_SEARCH_ONG % src_l)
             else:
-                title.setText("%s поиск: %s" % (src_l, qtxt) if qtxt else "%s поиск" % src_l)
+                title.setText(POPUP_TITLE_SEARCH_Q % (src_l, qtxt) if qtxt else POPUP_TITLE_SEARCH % src_l)
             try:
                 title.setTypeface(AndroidUtilities.getTypeface("fonts/rmedium.ttf"))
             except Exception:
@@ -1188,11 +1060,9 @@ class _SearchUI:
                             hb.setLayoutParams(p)
                     except Exception:
                         pass
-
                 class HL(dynamic_proxy(OGL)):
                     def onGlobalLayout(self):
                         sh()
-
                 head.getViewTreeObserver().addOnGlobalLayoutListener(HL())
             except Exception:
                 pass
@@ -1238,11 +1108,9 @@ class _SearchUI:
                             self._blur.setLayoutParams(p)
                     except Exception:
                         pass
-
                 class BL(dynamic_proxy(OGL)):
                     def onGlobalLayout(self):
                         sb2()
-
                 bot.getViewTreeObserver().addOnGlobalLayoutListener(BL())
             except Exception:
                 pass
@@ -1270,19 +1138,9 @@ class _SearchUI:
                         w.setDimAmount(0.)
                     except Exception:
                         pass
-                    a = w.getAttributes()
-                    a.width = -1
-                    a.height = -1
-                    try:
-                        a.gravity = Gr.TOP
-                        a.y = 0
-                    except Exception:
-                        pass
-                    w.setAttributes(a)
-                    w.setLayout(-1, -1)
                 except Exception:
                     pass
-            self.current_dialog = dialog
             dialog.show()
+            self.current_dialog = dialog
         except Exception as e:
             BulletinHelper.show_error(str(e))
