@@ -1,9 +1,120 @@
+from constants import BOOL_DEFAULTS_FALSE
+
 PICK_MODES = [
     ("= поля", "msg_list", "key_chats_archiveBackground", "tag_icon_3"),
     ("# хэштег", "caption_show", "key_chats_archiveBackground", "caption_show"),
     ("_ подчёркивание", "caption_limit", "key_chats_archiveBackground", "caption_limit"),
     (", запятая", "msg_delete", "key_dialogSwipeRemove", "swipe_delete"),
 ]
+
+EXTRA_SECTIONS = [
+    {
+        "title": "Доп. названия",
+        "items": [
+            ("selector", "Max русских названий", "extra_ru_count", ["0", "1", "2", "3", "4", "5"], 1),
+            ("selector", "Max английских названий", "extra_en_count", ["0", "1", "2", "3", "4", "5"], 1),
+        ]
+    },
+    {
+        "title": "Текст при выкл. Аниме",
+        "items": [
+            ("input", "Текст при выкл. Аниме", "hash_anime_replace", "|"),
+        ]
+    },
+    {
+        "title": "Настройки обложки",
+        "items": [
+            ("selector", "Источник превью", "cover_source", ["AniList", "Shikimori"], 0),
+            ("selector", "Выбор обложки", "card_send_mode", ["Превью", "Медиа"], 0),
+            ("selector", "Положение превью", "preview_pos", ["Снизу", "Сверху"], 0),
+            ("selector", "Положение медиа", "media_pos", ["Сверху", "Снизу"], 0),
+            ("switch", "Авто-обновление обложки", "auto_update_cover", False),
+        ]
+    },
+    {
+        "title": "Настройки доп. ссылок",
+        "items": [
+            ("input", "Текст ссылки на AniList", "anilist_link_text", "AniList"),
+            ("input", "Текст ссылки на Shikimori", "shikimori_link_text", "Shikimori"),
+        ]
+    },
+    {
+        "title": "Доп. переключатели",
+        "items": [
+            ("switch", "Спойлерные теги", "spoiler_format", True),
+            ("switch", "Уточнять ONA", "ona_clarify", False),
+            ("switch", "Разделители", "show_separators", True),
+        ]
+    },
+    {
+        "title": "Описание",
+        "items": [
+            ("selector", "Источник", "desc_source", ["Shikimori", "AniList"], 0),
+        ]
+    }
+]
+
+MODE_FIELDS_MAIN = [
+    ("Предпросмотр", "show_preview"),
+    ("Аниме", "show_anime_label"),
+    ("Флаг страны", "show_flag"),
+    ("Название страны", "show_country"),
+    ("Сезон", "show_season"),
+    ("Год", "show_year"),
+    ("Формат", "show_format"),
+    ("Целевая аудитория", "show_demographic"),
+    ("Ссылка AniList", "show_link_in_full"),
+    ("Ссылка Shikimori", "show_shikimori_link"),
+    ("Описание", "show_description"),
+]
+
+MODE_FIELDS_EXTRA = [
+    ("ID", "show_id"),
+    ("Серии", "show_episodes"),
+    ("Длительность", "show_duration"),
+    ("Оценка", "show_score"),
+    ("Статус", "show_status"),
+    ("Оригинал", "show_source"),
+    ("Студии", "show_studios"),
+    ("Автор", "show_author"),
+    ("Баннер", "show_banner"),
+    ("Обложка", "show_cover"),
+    ("Связанные", "show_relations"),
+    ("Трейлер", "show_trailer"),
+    ("Опенинг", "show_opening"),
+    ("Эндинг", "show_ending"),
+]
+
+MODE_FIELDS = {
+    0: MODE_FIELDS_MAIN,
+    1: [
+        ("Аниме", "show_hash_anime"),
+        ("Страна", "hash_country"),
+        ("Формат", "hash_format"),
+        ("Аудитория", "hash_demographic"),
+        ("Статус", "hash_status"),
+        ("Оригинал", "hash_source"),
+        ("Студии", "hash_studios"),
+        ("Автор", "hash_author"),
+    ],
+    2: [
+        ("Формат", "underscore_format"),
+        ("Статус", "underscore_status"),
+        ("Оригинал", "underscore_source"),
+        ("Студии", "underscore_studios"),
+        ("Автор", "underscore_author"),
+    ],
+    3: [
+        ("Студии", "comma_studios"),
+    ]
+}
+
+MODE_KEY_CONFIG = {
+    0: ("coll_fields_main", "show_genres", "show_tags", "sep_enabled_", True),
+    1: ("coll_hash_main", "hash_genres", "hash_tags", "hash_sep_", True),
+    2: ("coll_under_main", "underscore_genres", "underscore_tags", "under_sep_", True),
+    3: ("coll_comma_main", "comma_genres", "comma_tags", "comma_sep_", False),
+}
 
 def parse_bool(val, default=True):
     if val is None:
@@ -29,117 +140,40 @@ def is_master_enabled(plugin, master_key, default=True):
 def is_item_enabled(plugin, master_key, item_key, default_master=True, default_item=True):
     if not is_master_enabled(plugin, master_key, default_master):
         return False
+    actual_default = False if item_key in BOOL_DEFAULTS_FALSE else default_item
     try:
-        v = plugin.get_setting(item_key, default_item)
+        v = plugin.get_setting(item_key, actual_default)
     except Exception:
-        return default_item
-    return parse_bool(v, default_item)
+        return actual_default
+    return parse_bool(v, actual_default)
 
-def _sep_items(mapping, scope, kind=None):
-    items = []
+def get_extra_sections(idx):
+    return EXTRA_SECTIONS if idx == 0 else []
+
+def _build_sep_items(mapping, scope, prefix):
     if not mapping or not getattr(mapping, "separator_keys", None):
-        return items
+        return []
+    items = []
     for key in mapping.separator_keys:
-        if not mapping.sep_matches_scope(key, scope):
-            continue
-        label = mapping.separator_labels.get(key, key)
-        if kind is None:
-            items.append((label, f"sep_enabled_{key}"))
-        elif kind == "hash":
-            items.append((label, f"hash_sep_{key}"))
-        elif kind == "under":
-            items.append((label, f"underscore_sep_{key}"))
-        elif kind == "comma":
-            items.append((label, f"comma_sep_{key}"))
+        if mapping.sep_matches_scope(key, scope):
+            label = mapping.separator_labels.get(key, key)
+            items.append((label, f"{prefix}{key}"))
     return items
 
 def get_mode_blocks(mapping, idx):
-    try:
-        idx = int(idx) if idx is not None else 0
-    except Exception:
-        idx = 0
-    has = bool(getattr(mapping, "separator_keys", None))
-
+    idx = int(idx) if idx in MODE_KEY_CONFIG else 0
+    main_key, gen_key, tag_key, prefix, default_master = MODE_KEY_CONFIG[idx]
+    genres = _build_sep_items(mapping, "genres", prefix)
+    tags = _build_sep_items(mapping, "tags", prefix)
     if idx == 0:
-        main = [
-            ("Предпросмотр", "show_preview"),
-            ("ID", "show_id"),
-            ("Аниме", "show_anime_label"),
-            ("Автор", "show_author"),
-            ("Флаг страны", "show_flag"),
-            ("Название страны", "show_country"),
-            ("Сезон", "show_season"),
-            ("Год", "show_year"),
-            ("г.", "show_year_g"),
-            ("Формат", "show_format"),
-            ("Целевая аудитория", "show_demographic"),
-            ("Серии", "show_episodes"),
-            ("Оценка", "show_score"),
-            ("Статус", "show_status"),
-            ("Длительность", "show_duration"),
-            ("Обложка", "show_cover"),
-            ("Баннер", "show_banner"),
-            ("Связанные", "show_relations"),
-            ("Опенинг", "show_opening"),
-            ("Эндинг", "show_ending"),
-            ("Трейлер", "show_trailer"),
-            ("Источник", "show_source"),
-            ("Студии", "show_studios"),
-        ]
-        genres = _sep_items(mapping, "genres") if has else []
-        tags = _sep_items(mapping, "tags") if has else []
-
         return [
-            ("Основные", "coll_fields_main", main, True, True),
-            ("Жанры", "show_genres", genres, True, True),
-            ("Теги", "show_tags", tags, True, True),
+            ("Основные", main_key, MODE_FIELDS_MAIN, True, True),
+            ("Дополнительные", "coll_fields_extra", MODE_FIELDS_EXTRA, False, True),
+            ("Жанры", gen_key, genres, True, True),
+            ("Теги", tag_key, tags, True, True),
         ]
-
-    if idx == 1:
-        main = [
-            ("Аниме", "show_hash_anime"),
-            ("Автор", "hash_author"),
-            ("Страна", "hash_country"),
-            ("Формат", "hash_format"),
-            ("Аудитория", "hash_demographic"),
-            ("Студии", "hash_studios"),
-            ("Источник", "hash_source"),
-            ("Статус", "hash_status"),
-        ]
-        genres = _sep_items(mapping, "genres", "hash") if has else []
-        tags = _sep_items(mapping, "tags", "hash") if has else []
-        return [
-            ("Основные", "coll_hash_main", main, True, True),
-            ("Жанры", "hash_genres", genres, True, True),
-            ("Теги", "hash_tags", tags, True, True),
-        ]
-
-    if idx == 2:
-        main = [
-            ("Автор", "underscore_author"),
-            ("Формат", "underscore_format"),
-            ("Студии", "underscore_studios"),
-            ("Источник", "underscore_source"),
-            ("Статус", "underscore_status"),
-        ]
-        genres = _sep_items(mapping, "genres", "under") if has else []
-        tags = _sep_items(mapping, "tags", "under") if has else []
-        return [
-            ("Основные", "coll_under_main", main, True, True),
-            ("Жанры", "underscore_genres", genres, True, True),
-            ("Теги", "underscore_tags", tags, True, True),
-        ]
-
-    if idx == 3:
-        main = [
-            ("Студии", "comma_studios"),
-        ]
-        genres = _sep_items(mapping, "genres", "comma") if has else []
-        tags = _sep_items(mapping, "tags", "comma") if has else []
-        return [
-            ("Основные", "coll_comma_main", main, False, True),
-            ("Жанры", "comma_genres", genres, False, True),
-            ("Теги", "comma_tags", tags, False, True),
-        ]
-
-    return []
+    return [
+        ("Все", main_key, MODE_FIELDS.get(idx, []), default_master, True),
+        ("Жанры", gen_key, genres, default_master, True),
+        ("Теги", tag_key, tags, default_master, True),
+    ]

@@ -1,39 +1,17 @@
-from client_utils import run_on_queue, get_last_fragment
+from client_utils import get_last_fragment, run_on_queue
+from ui.bulletin import BulletinHelper
 from ui.settings import Divider, Header, Input, Selector, Switch, Text, Custom
-from android_utils import run_on_ui_thread
-from ui.alert import AlertDialogBuilder
 
-from constants import DEFAULT_MAPPING
+import api
+from constants import (
+    DEFAULT_MAPPING, ANILIST_PREVIEW_URL, SHIKIMORI_PREVIEW_URL,
+    DEFAULT_ONGOING_MIN_SCORE, DEFAULT_LIST_NUM_CUSTOM, DEFAULT_SEARCH_REPLY_IGNORED
+)
 from chat_preview_ui import make_preview_factory
 from collapsible_ui import make_mode_picker_and_blocks
 from template_editor import TemplateEditor
 from collapsible_blocks import is_item_enabled
 from formatter import get_preview_text
-
-ANILIST_PREVIEW_URL = "https://img.anili.st/media/1"
-SHIKIMORI_PREVIEW_URL = "https://shikimori.io/uploads/poster/animes/1/6ad45d9decad83014a484a54f4dba6a7.jpeg"
-
-def make_switch(plugin, key, text, default, store=None, prefix=None):
-    def oc(val, k=key, s=store, p=prefix):
-        if s is not None:
-            s[k] = bool(val)
-            plugin.set_setting(f"{p}{k}", bool(val))
-        else:
-            plugin.set_setting(key, bool(val))
-        plugin.update_settings()
-    full_key = key if store is None else f"{prefix}{key}"
-    return Switch(key=full_key, text=text, default=default, on_change=oc, link_alias=full_key)
-
-def show_info_alert(title, text, positive_button="Закрыть"):
-    fragment = get_last_fragment()
-    if not fragment or not fragment.getParentActivity():
-        return
-    activity = fragment.getParentActivity()
-    builder = AlertDialogBuilder(activity, AlertDialogBuilder.ALERT_TYPE_MESSAGE)
-    builder.set_title(title)
-    builder.set_message(text)
-    builder.set_positive_button(positive_button, lambda d, w: run_on_ui_thread(builder.dismiss))
-    run_on_ui_thread(lambda: (builder.show(), builder.set_cancelable(True), builder.set_canceled_on_touch_outside(True)))
 
 def build_preview(plugin, mapping):
     return get_preview_text(plugin, mapping=mapping)
@@ -51,7 +29,7 @@ def _get_preview_cover_url(plugin):
     if not use_anilist and not use_shikimori:
         return None
 
-    pref_source = int(getattr(plugin, "cover_source", 0) or 0)
+    pref_source = int(plugin.get_setting("cover_source", 0) if hasattr(plugin, "get_setting") else getattr(plugin, "cover_source", 0) or 0)
 
     if pref_source == 1:
         return SHIKIMORI_PREVIEW_URL if use_shikimori else (ANILIST_PREVIEW_URL if use_anilist else None)
@@ -77,6 +55,13 @@ def create_settings(plugin, mapping, clear_search_cache, full_clear_cache):
             p.set_setting("__internal_dummy__", True)
         except Exception:
             pass
+
+    def show_limits():
+        try:
+            info = api.get_limits_info()
+            BulletinHelper.show_info(info, get_last_fragment())
+        except Exception as e:
+            BulletinHelper.show_error(str(e), get_last_fragment())
 
     return [
         Input(
@@ -109,6 +94,12 @@ def create_settings(plugin, mapping, clear_search_cache, full_clear_cache):
             Selector(key="ongoing_api", text="API онгоингов", default=0, items=["AniList", "Shikimori"], on_change=oc, link_alias="ongoing_api"),
             Selector(key="search_ui_mode", text="Режим поиска", default=0, items=["Окно выбора", "Первое совпадение"], on_change=oc, link_alias="search_ui_mode"),
             Divider(),
+            Input(
+                key="search_reply_ignored_words", text="Игнорируемые слова при реплай поиске",
+                default=DEFAULT_SEARCH_REPLY_IGNORED, subtext="Слова и символы через запятую",
+                on_change=oc, link_alias="search_reply_ignored_words",
+            ),
+            Divider(),
             Text(icon="files_internal", text="Маппинги", link_alias="mappings", create_sub_fragment=lambda: [
                 Input(
                     key="universal_mapping", text="Универсальный маппинг", default=DEFAULT_MAPPING,
@@ -116,6 +107,11 @@ def create_settings(plugin, mapping, clear_search_cache, full_clear_cache):
                     on_change=on_map, link_alias="universal_mapping",
                 ),
             ]),
+            Divider(),
+            Text(
+                icon="msg_info", text="Проверить лимиты API", link_alias="check_api_limits",
+                on_click=lambda _: show_limits(),
+            ),
         ]),
         Text(icon="menu_edit_appearance", text="Настройки отображения", link_alias="display_settings", create_sub_fragment=lambda: [
             Custom(factory=make_preview_factory(
@@ -138,28 +134,27 @@ def create_settings(plugin, mapping, clear_search_cache, full_clear_cache):
                 on_click=lambda _: TemplateEditor(plugin).open_keyboard(),
             ),
             Text(icon="msg_settings", text="Доп. настройки", link_alias="extra_settings", create_sub_fragment=lambda: [
-                Header("Настройки обложки"),
-                Selector(key="cover_source", text="Источник превью", default=0, items=["AniList", "Shikimori"], on_change=oc, link_alias="cover_source"),
-                Selector(key="card_send_mode", text="Выбор обложки", default=0, items=["Превью", "Медиа"], on_change=oc, link_alias="card_send_mode"),
-                Selector(key="preview_pos", text="Положение превью", default=0, items=["Снизу", "Сверху"], on_change=oc, link_alias="preview_pos"),
-                Selector(key="media_pos", text="Положение медиа", default=0, items=["Сверху", "Снизу"], on_change=oc, link_alias="media_pos"),
-                Switch(key="auto_update_cover", text="Авто-обновление обложки через @WebpageBot", default=False, on_change=oc, link_alias="auto_update_cover"),
-                Switch(key="exclude_hentai", text="Исключать хентай онгоинги", default=True, on_change=oc, link_alias="exclude_hentai"),
-                Header("Настройки доп. ссылок"),
-                Input(key="anilist_link_text", text="Текст ссылки на AniList", default="AniList", on_change=oc, link_alias="anilist_link_text"),
-                Input(key="shikimori_link_text", text="Текст ссылки на Shikimori", default="Shikimori", on_change=oc, link_alias="shikimori_link_text"),
-                Header("Доп. переключатели"),
-                Switch(key="spoiler_format", text="Спойлерные теги", default=True, on_change=oc, link_alias="spoiler_format"),
-                Switch(key="ona_clarify", text="Уточнять ONA", default=False, on_change=oc, link_alias="ona_clarify"),
-                Switch(key="show_separators", text="Разделители", default=True, on_change=oc, link_alias="show_separators"),
-                Header("Текст при выкл. Аниме"),
-                Input(key="hash_anime_replace", text="Текст при выкл. Аниме", default="|", on_change=oc, link_alias="hash_anime_replace"),
+                Header("Форматирование"),
+                Switch(key="enable_html_card", text="Включить HTML", default=True, on_change=oc, link_alias="enable_html_card"),
+                Divider(),
+                Header("Онгоинги"),
+                Input(
+                    key="ongoing_min_score", text="Минимальный рейтинг онгоингов",
+                    default=DEFAULT_ONGOING_MIN_SCORE, subtext="Число от 0 до 10 для фильтрации онгоингов",
+                    on_change=oc, link_alias="ongoing_min_score",
+                ),
+                Switch(
+                    key="ongoing_exclude_unknown_score", text="Исключать онгоинги без оценки",
+                    default=True, on_change=oc, link_alias="ongoing_exclude_unknown_score",
+                ),
+                Switch(
+                    key="exclude_hentai", text="Исключать хентай онгоинги",
+                    default=True, on_change=oc, link_alias="exclude_hentai",
+                ),
+                Divider(),
                 Header("Нумерация списка"),
                 Selector(key="list_number_mode", text="Стиль нумерации", default=0, items=["Цифры", "Свой", "Ничего"], on_change=oc, link_alias="list_number_mode"),
-                Input(key="list_number_custom", text="Свой маркер", default="•", on_change=oc, link_alias="list_number_custom"),
-                Header("Доп. названия"),
-                Selector(key="extra_ru_count", text="Max русских названий", default=1, items=["0", "1", "2", "3", "4", "5"], on_change=oc, link_alias="extra_ru_count"),
-                Selector(key="extra_en_count", text="Max английских названий", default=1, items=["0", "1", "2", "3", "4", "5"], on_change=oc, link_alias="extra_en_count"),
+                Input(key="list_number_custom", text="Свой маркер", default=DEFAULT_LIST_NUM_CUSTOM, on_change=oc, link_alias="list_number_custom"),
             ]),
             Divider(),
             Custom(
@@ -167,29 +162,6 @@ def create_settings(plugin, mapping, clear_search_cache, full_clear_cache):
                     plugin, mapping, on_change_global=oc
                 ).instance.java,
                 link_alias="display_mode_pick",
-            ),
-            Divider(),
-            Switch(key="show_link_in_full", text="Ссылка AniList", default=True, on_change=oc, link_alias="show_link_in_full"),
-            Switch(key="show_shikimori_link", text="Ссылка Shikimori", default=True, on_change=oc, link_alias="show_shikimori_link"),
-            Divider(),
-            Header("Описание"),
-            Switch(key="show_description", text="Описание", default=False, on_change=oc, link_alias="show_description"),
-            Selector(key="description_in_card", text="Способ отправки описания", default=0, items=["В карточке", "Отдельно"], on_change=oc, link_alias="description_in_card"),
-            Selector(key="desc_source", text="Источник описания", default=0, items=["Shikimori", "AniList"], on_change=oc, link_alias="desc_source"),
-        ]),
-        Divider(),
-        Text(icon="msg_filled_general", text="Форматирование текста", link_alias="text_formatting", create_sub_fragment=lambda: [
-            Header("Основная карточка"),
-            Switch(key="enable_html_card", text="Включить HTML", default=True, on_change=oc, link_alias="enable_html_card"),
-            Divider(),
-            Header("Отдельное описание"),
-            Switch(key="enable_html_desc", text="Включить HTML", default=True, on_change=oc, link_alias="enable_html_desc"),
-            Divider(),
-            Header("Очистка пустых плейсхолдеров"),
-            Selector(
-                key="empty_ph_space_mode", text="Удаление пробела", default=0,
-                items=["После плейсхолдера", "До плейсхолдера"],
-                on_change=oc, link_alias="empty_ph_space_mode",
             ),
         ]),
         Divider(),

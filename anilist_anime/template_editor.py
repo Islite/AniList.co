@@ -10,8 +10,8 @@ from org.telegram.ui.ActionBar import Theme
 from java import dynamic_proxy
 from android.graphics import PorterDuff, PorterDuffColorFilter
 
-from constants import DEFAULT_TEMPLATE, DEFAULT_LIST_TEMPLATE, DEFAULT_POPUP_TEMPLATE
-from template_blocks import TemplatePanelBuilder, PREVIEW_SAMPLES, dp, to_jcolor, th, th_alpha, make_bg, make_circle_bg, no_clip, lp, get_drawable
+from constants import DEFAULT_TEMPLATE, DEFAULT_LIST_TEMPLATE, DEFAULT_POPUP_TEMPLATE, MOCK_PREVIEW_DATA
+from template_blocks import TemplatePanelBuilder, dp, to_jcolor, th, th_alpha, make_bg, make_circle_bg, no_clip, lp, get_drawable
 
 LinearLayout = find_class("android.widget.LinearLayout")
 FrameLayout = find_class("android.widget.FrameLayout")
@@ -77,24 +77,16 @@ class TemplateEditor:
     def _render_preview(self, tpl=None):
         try:
             self._host.update_settings()
-            if tpl is None:
-                tpl = self._get_text() or str(self.get_setting("card_template", DEFAULT_TEMPLATE) or DEFAULT_TEMPLATE)
-            prev = getattr(self._host, "card_template", None)
-            self._host.card_template = str(tpl)
-            try:
-                from settings_ui import build_preview
-                mapping = getattr(self._host, "mapping", None)
-                if mapping is None:
-                    from mapping import MappingState
-                    mapping = MappingState(self._host)
-                return build_preview(self._host, mapping)
-            finally:
-                if prev is not None:
-                    self._host.card_template = prev
+            mapping = getattr(self._host, "mapping", None)
+            if mapping is None:
+                from mapping import MappingState
+                mapping = MappingState(self._host)
+            current = tpl if tpl is not None else self._get_text()
+            from formatter import get_template_preview
+            return get_template_preview(self._host, self._current_tab, current, mapping)
         except Exception as e:
-            mv = dict(PREVIEW_SAMPLES)
             try:
-                return str(tpl or DEFAULT_TEMPLATE).format(**mv)
+                return str(tpl or DEFAULT_TEMPLATE).format(**MOCK_PREVIEW_DATA)
             except Exception:
                 return "Ошибка шаблона: " + str(e)
 
@@ -117,33 +109,8 @@ class TemplateEditor:
 
     def _show_preview(self, from_editor=False):
         try:
-            text = ""
-            current = self._get_text() if from_editor else self._templates[self._current_tab]
-            if self._current_tab == "card":
-                text = self._render_preview(current)
-            else:
-                from formatter import format_mini_template
-                vd = {
-                    "num": "1",
-                    "custom": "•",
-                    "title": "Attack on Titan",
-                    "type_ru": "TV Сериал",
-                    "format": "TV Сериал",
-                    "status": "онгоинг",
-                    "score": "8.8",
-                    "episodes": "12 эп.",
-                    "season": "зима",
-                    "year": "2013г.",
-                    "genres": "драма экшен",
-                    "country": "Япония",
-                    "flag": "🇯🇵",
-                    "adult": "18+",
-                    "cover": '<a href="#">обложка</a>',
-                    "banner": '<a href="#">баннер</a>',
-                    "link": '<a href="#">ссылка</a>',
-                    "id": "101280"
-                }
-                text = format_mini_template(current, vd)
+            current = self._get_text() if from_editor else self._templates.get(self._current_tab, "")
+            text = self._render_preview(current)
             frag = get_last_fragment()
             if not frag or not frag.getParentActivity(): return
             act = frag.getParentActivity()

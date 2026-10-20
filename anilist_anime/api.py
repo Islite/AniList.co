@@ -1,32 +1,117 @@
+import hashlib
+import threading
 import time
+import uuid
 from datetime import datetime
 import requests
+from android_utils import run_on_ui_thread
+from client_utils import get_last_fragment
+from ui.bulletin import BulletinHelper
+
 from constants import (
     ANILIST_GRAPHQL_URL, QUERIES, SHIKIMORI_GRAPHQL_URL,
     SHIKI_QSS, SHIKI_QID, SHIKI_QSO, SHIKI_QSO2,
 )
 
-_H = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+class ApiRateLimiter:
+    def __init__(self, name, min_interval, max_per_minute):
+        self._name = name
+        self._min_interval = min_interval
+        self._max_per_minute = max_per_minute
+        self._history = []
+        self._last_call = 0.0
+        self._lock = threading.Lock()
+
+    def current_count(self):
+        with self._lock:
+            now = time.time()
+            self._history = [t for t in self._history if now - t < 60.0]
+            return len(self._history)
+
+    def acquire(self):
+        with self._lock:
+            now = time.time()
+            elapsed = now - self._last_call
+            if elapsed < self._min_interval:
+                time.sleep(self._min_interval - elapsed)
+            now = time.time()
+            self._history = [t for t in self._history if now - t < 60.0]
+            if len(self._history) >= self._max_per_minute:
+                delay = 60.0 - (now - self._history[0]) + 0.1
+                if delay > 0:
+                    sec = int(round(delay))
+                    run_on_ui_thread(lambda: BulletinHelper.show_error(
+                        f"Лимит API {self._name} превышен. Доступно через {sec} сек.",
+                        get_last_fragment()
+                    ))
+                    time.sleep(delay)
+                    run_on_ui_thread(lambda: BulletinHelper.show_success(
+                        f"Лимит API {self._name} сброшен. Поиск снова доступен.",
+                        get_last_fragment()
+                    ))
+            self._last_call = time.time()
+            self._history.append(self._last_call)
+
+_anilist_limiter = ApiRateLimiter("AniList", 0.7, 85)
+_shikimori_limiter = ApiRateLimiter("Shikimori", 0.25, 85)
+
+def get_limits_info():
+    al_used = _anilist_limiter.current_count()
+    sh_used = _shikimori_limiter.current_count()
+    al_left = max(0, 85 - al_used)
+    sh_left = max(0, 85 - sh_used)
+    return f"AniList: доступно {al_left}/85 в мин.\nShikimori: доступно {sh_left}/85 в мин."
+
+def generate_unique_user_agent(seed_key=None):
+    if not seed_key:
+        try:
+            from org.telegram.messenger import UserConfig
+            seed_key = str(UserConfig.getInstance(UserConfig.selectedAccount).getClientUserId())
+        except Exception:
+            seed_key = str(uuid.uuid4())
+    digest = hashlib.md5(str(seed_key).encode("utf-8")).hexdigest()
+    major = 120 + (int(digest[:2], 16) % 15)
+    minor = 5000 + (int(digest[2:6], 16) % 2000)
+    build = 100 + (int(digest[6:8], 16) % 100)
+    device_id = digest[8:16]
+    return f"Mozilla/5.0 (Linux; Android 14; Mobile; {device_id}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{major}.0.{minor}.{build} Mobile Safari/537.36"
+
+_USER_AGENT = generate_unique_user_agent()
+
+_session = requests.Session()
+_session.headers.update({
+    "User-Agent": _USER_AGENT,
     "Content-Type": "application/json",
     "Accept": "application/json",
     "Origin": "https://anilist.co",
     "Referer": "https://anilist.co/",
-}
+})
 
-_session = requests.Session()
-_session.headers.update(_H)
+def update_session_user_agent(new_ua):
+    global _USER_AGENT
+    _USER_AGENT = str(new_ua)
+    _session.headers["User-Agent"] = _USER_AGENT
+
+def get_current_user_agent():
+    return _USER_AGENT
+
+def _throttle_request(url):
+    if "anilist" in url:
+        _anilist_limiter.acquire()
+    elif "shikimori" in url:
+        _shikimori_limiter.acquire()
 
 def gql(url, q, v, tag="api", rt=2):
     for i in range(rt + 1):
         try:
+            _throttle_request(url)
             r = _session.post(url, json={"query": q, "variables": v}, timeout=10)
             sc = r.status_code
             if sc == 403:
                 return None, tag + "_disabled"
             if sc == 429:
                 if i < rt:
-                    time.sleep(1)
+                    time.sleep(1.5)
                     continue
                 return None, tag + "_rate"
             try:
@@ -149,20 +234,32 @@ def multi_search_anilist(query):
     media = d.get("Page", {}).get("media", []) or []
     return [_norm_anilist(m) for m in media]
 
-def multi_search_anilist_genre(name, force_tag=False):
-    def run(qstr):
-        d, e = gql(ANILIST_GRAPHQL_URL, qstr, {"g": name}, "anilist")
-        if e or not d:
-            return None
-        media = d.get("Page", {}).get("media", []) or []
-        return [_norm_anilist(m) for m in media]
-    first, second = (QUERIES["multi_tag"], QUERIES["multi_genre"]) if force_tag else (QUERIES["multi_genre"], QUERIES["multi_tag"])
-    media = run(first)
-    if media is None:
+def fetch_top_anilist(genres=None, tags=None):
+    g_list = [g for g in (genres or []) if g]
+    t_list = [t for t in (tags or []) if t]
+    if g_list and t_list:
+        q = QUERIES["multi_top_both"]
+        v = {"genres": g_list, "tags": t_list}
+    elif g_list:
+        q = QUERIES["multi_top_genres"]
+        v = {"genres": g_list}
+    elif t_list:
+        q = QUERIES["multi_top_tags"]
+        v = {"tags": t_list}
+    else:
+        return []
+    d, e = gql(ANILIST_GRAPHQL_URL, q, v, "anilist")
+    if e or not d:
         return None
-    if not media:
-        media = run(second)
-    return media
+    media = d.get("Page", {}).get("media", []) or []
+    return [_norm_anilist(m) for m in media]
+
+def multi_search_anilist_genre(name, force_tag=False):
+    if not name:
+        return []
+    if force_tag:
+        return fetch_top_anilist(tags=[name])
+    return fetch_top_anilist(genres=[name])
 
 def multi_search_shikimori(query):
     q = str(query).strip()

@@ -18,6 +18,7 @@ from constants import (
     POPUP_LABEL_COVER_PREFIX, POPUP_COVER_DEFAULT, POPUP_COVER_BELOW, POPUP_COVER_ABOVE,
     POPUP_MENU_MEDIA, POPUP_MENU_PREVIEW, POPUP_MENU_NOLINK,
     POPUP_TITLE_SEARCH_ONG_Q, POPUP_TITLE_SEARCH_ONG, POPUP_TITLE_SEARCH_Q, POPUP_TITLE_SEARCH,
+    DEFAULT_LIST_NUM_CUSTOM
 )
 from formatter import format_popup_row_subtitle, build_list_text_chunks
 
@@ -89,14 +90,14 @@ def ico(n):
 
 _CTRL = None
 
-def show_popup(results, query, use_shiki, is_genre, account, base, on_select, ongoing=False, list_num_mode=0, list_num_custom="•", card_send_mode=0, preview_pos=0, media_pos=0, popup_template=None, list_template=None):
+def show_popup(results, query, use_shiki, is_genre, account, base, on_select, ongoing=False, list_num_mode=0, list_num_custom=DEFAULT_LIST_NUM_CUSTOM, card_send_mode=0, preview_pos=0, media_pos=0, popup_template=None, list_template=None, *args, **kwargs):
     global _CTRL
     ctrl = _SearchUI(results, query, use_shiki, is_genre, account, base, on_select, ongoing, list_num_mode, list_num_custom, card_send_mode, preview_pos, media_pos, popup_template, list_template)
     _CTRL = ctrl
     run_on_ui_thread(ctrl.show)
 
 class _SearchUI:
-    def __init__(self, results, query, use_shiki, is_genre, account, base, on_select, ongoing=False, list_num_mode=0, list_num_custom="•", card_send_mode=0, preview_pos=0, media_pos=0, popup_template=None, list_template=None):
+    def __init__(self, results, query, use_shiki, is_genre, account, base, on_select, ongoing=False, list_num_mode=0, list_num_custom=DEFAULT_LIST_NUM_CUSTOM, card_send_mode=0, preview_pos=0, media_pos=0, popup_template=None, list_template=None):
         self._res = list(results or [])
         self._q = query or ""
         self._src = "Shikimori" if use_shiki else "AniList"
@@ -106,12 +107,12 @@ class _SearchUI:
         self._base = base
         self._on_select = on_select
         self._list_num_mode = int(list_num_mode or 0)
-        self._list_num_custom = str(list_num_custom or "•")
+        self._list_num_custom = str(list_num_custom or DEFAULT_LIST_NUM_CUSTOM)
         self._plugin_card_mode = int(card_send_mode or 0)
         self._plugin_preview_pos = int(preview_pos or 0)
         self._plugin_media_pos = int(media_pos or 0)
         self._popup_template = popup_template or POPUP_ROW_SUBTITLE_TEMPLATE
-        self._list_template = list_template or "{num}. <code>{title}</code>"
+        self._list_template = list_template or "{num} <code>{title}</code>"
         self._a = None
         self.current_dialog = None
         self._items = []
@@ -120,7 +121,7 @@ class _SearchUI:
         self._multi = False
         self._bar = self._blur = self._cf = None
         self._bc = self._bl = self._bcl = self._ball = self._bb = self._bx = None
-        self._temp_pos = None
+        self._temp_pos = 0
         self._force_mode = None
         self._force_nolink = False
         self._rows = {}
@@ -277,11 +278,9 @@ class _SearchUI:
             v.setTextColor(cr if cr is not None else g)
             return v
         col.addView(tv(res.get("title") or "—", 16, th(Theme.key_windowBackgroundWhiteBlackText)))
-        
         sub_text = format_popup_row_subtitle(res, self._popup_template)
         if sub_text:
             col.addView(tv(sub_text))
-
         row.addView(col, LayoutHelper.createLinear(0, -2, 1.0))
         row.setOnClickListener(OnClickListener(lambda v, i=idx: self._clk(i)))
         row.setOnLongClickListener(OnLongClickListener(lambda v, i=idx: (self._lng(i), True)[1]))
@@ -726,17 +725,19 @@ class _SearchUI:
             return 0
 
     def _pos_label(self):
-        if self._temp_pos is None:
-            return POPUP_COVER_DEFAULT
-        return POPUP_COVER_BELOW if self._temp_pos == 1 else POPUP_COVER_ABOVE
+        if self._temp_pos == 1:
+            return POPUP_COVER_BELOW
+        if self._temp_pos == 2:
+            return POPUP_COVER_ABOVE
+        return POPUP_COVER_DEFAULT
 
     def _cycle_pos(self):
-        if self._temp_pos is None:
+        if self._temp_pos == 0:
             self._temp_pos = 1
         elif self._temp_pos == 1:
-            self._temp_pos = 0
+            self._temp_pos = 2
         else:
-            self._temp_pos = None
+            self._temp_pos = 0
 
     def _req(self, mode):
         n = len(self._sel)
@@ -761,7 +762,7 @@ class _SearchUI:
             return
         if mode == "nolink":
             self._force_nolink = True
-            self._force_mode = 0
+            self._force_mode = 1
             self._scards()
             return
         self._scards()
@@ -801,7 +802,7 @@ class _SearchUI:
         return {
             "card_send_mode": int(mode),
             "no_link": bool(getattr(self, "_force_nolink", False)),
-            "temp_pos": self._temp_pos,
+            "temp_pos": int(self._temp_pos or 0),
         }
 
     def _scards(self):
@@ -813,7 +814,7 @@ class _SearchUI:
             self._force_nolink = False
             self._cl()
             for res in items:
-                run_on_queue(lambda r=res, o=opts: self._on_select(r, self._account, self._base, o))
+                run_on_queue(lambda r=res: self._on_select(r, self._account, self._base, opts))
         except Exception as e:
             BulletinHelper.show_error(str(e))
 
@@ -853,10 +854,12 @@ class _SearchUI:
             except Exception:
                 pass
             mode = self._mode()
-            if self._temp_pos is None:
-                irpos = ico("msg_reorder") or ico("msg_media") or 0
+            if self._temp_pos == 1:
+                irpos = ico("menu_link_below") or ico("msg_reorder") or 0
+            elif self._temp_pos == 2:
+                irpos = ico("menu_link_above") or ico("msg_reorder") or 0
             else:
-                irpos = ico("menu_link_below" if self._temp_pos == 1 else "menu_link_above") or ico("msg_reorder") or 0
+                irpos = ico("msg_reorder") or ico("msg_media") or 0
             irm = ico("iv_media") or ico("msg_photo") or ico("msg_media") or 0
             irp = ico("media_link_24") or ico("msg_link") or ico("msg_openin") or 0
             irn = ico("menu_link_revoke") or ico("msg_delete") or ico("msg_clear") or 0
@@ -905,7 +908,7 @@ class _SearchUI:
             src_label = "Shikimori" if "Shikimori" in str(self._src) else "AniList"
             chunks = build_list_text_chunks(
                 self._res, self._sel, self._q, src_label, self._ong,
-                self._list_template, self._list_num_custom
+                self._list_template, self._list_num_custom, mapping=None, list_num_mode=self._list_num_mode
             )
             if not chunks or not any(c.strip() for c in chunks):
                 BulletinHelper.show_error(POPUP_MSG_EMPTY)

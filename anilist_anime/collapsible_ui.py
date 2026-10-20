@@ -1,37 +1,49 @@
-from android.widget import LinearLayout, TextView, FrameLayout, ImageView, HorizontalScrollView
+from android.widget import LinearLayout, TextView, FrameLayout, ImageView, HorizontalScrollView, EditText
 from android.view import Gravity, View, ViewGroup
 from android.graphics import PorterDuff, PorterDuffColorFilter
 from android.graphics.drawable import GradientDrawable, LayerDrawable
 from android.util import TypedValue
 from android.text import TextUtils
-from android.animation import ValueAnimator
 from org.telegram.messenger import AndroidUtilities, LocaleController, R, ApplicationLoader
 from org.telegram.ui.ActionBar import Theme
-from android_utils import OnClickListener
-from java import dynamic_proxy
+from android_utils import OnClickListener, run_on_ui_thread
+from client_utils import get_last_fragment
 from hook_utils import find_class
 from androidx.core.content import ContextCompat
 from ui.settings import SimpleSettingFactory
-
+from ui.alert import AlertDialogBuilder
+from java import dynamic_proxy
 from chat_preview_ui import notify_preview_update
+from constants import BOOL_DEFAULTS_FALSE
 
 from collapsible_blocks import (
     PICK_MODES,
     is_master_enabled,
     parse_bool,
     get_mode_blocks,
+    get_extra_sections,
 )
 
 MP, WC, DUR = -1, -2, 220
 CHILD_PAD = 54
-AUL = find_class("android.animation.ValueAnimator$AnimatorUpdateListener")
 TgSwitch = find_class("org.telegram.ui.Components.Switch")
+TextSettingsCell = find_class("org.telegram.ui.Cells.TextSettingsCell")
+TextCheckCell = find_class("org.telegram.ui.Cells.TextCheckCell")
+HeaderCell = find_class("org.telegram.ui.Cells.HeaderCell")
+ValueAnimator = find_class("android.animation.ValueAnimator")
+AUL = find_class("android.animation.ValueAnimator$AnimatorUpdateListener")
 
 def dp(v):
     return int(AndroidUtilities.dp(float(v)))
 
 def rtl():
     return bool(LocaleController.isRTL)
+
+def to_jcolor(c):
+    c = int(c) & 0xFFFFFFFF
+    if c >= 0x80000000:
+        c -= 0x100000000
+    return c
 
 def tc(*k):
     for x in k:
@@ -67,6 +79,36 @@ def pill_dr(color, radius_dp=16):
     g.setCornerRadius(dp(radius_dp))
     g.setColor(int(color))
     return g
+
+def make_card_bg(radius_dp=14):
+    g = GradientDrawable()
+    g.setShape(0)
+    g.setCornerRadius(float(dp(radius_dp)))
+    g.setColor(to_jcolor(tc("key_windowBackgroundWhite") or 0xFFFFFFFF))
+    return g
+
+def make_divider(ctx, h_dp=12):
+    v = View(ctx)
+    v.setLayoutParams(LinearLayout.LayoutParams(MP, dp(h_dp)))
+    try:
+        v.setBackgroundColor(to_jcolor(tc("key_windowBackgroundGray") or 0x0F000000))
+    except Exception:
+        pass
+    return v
+
+def wrap_in_card(ctx, views, pad_v=0):
+    card = LinearLayout(ctx)
+    card.setOrientation(1)
+    try:
+        card.setBackground(make_card_bg(14))
+        card.setClipToOutline(True)
+    except Exception:
+        pass
+    if pad_v:
+        card.setPadding(0, dp(pad_v), 0, dp(pad_v))
+    for v in views:
+        card.addView(v, LinearLayout.LayoutParams(MP, WC))
+    return card
 
 def tv(ctx, t, sz, col, w=0):
     x = TextView(ctx)
@@ -366,20 +408,195 @@ def ch(ctx, title, on, cb):
     cell.setOnClickListener(OnClickListener(_o))
     return cell
 
+def make_sdk_header(ctx, text):
+    if HeaderCell:
+        try:
+            h = HeaderCell(ctx)
+            h.setText(text)
+            return h
+        except Exception:
+            pass
+    v = TextView(ctx)
+    v.setText(text)
+    v.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15)
+    v.setTextColor(tc("key_windowBackgroundWhiteBlueHeader", "key_windowBackgroundWhiteBlueText"))
+    v.setPadding(dp(21), dp(16), dp(21), dp(6))
+    return v
+
+def make_sdk_switch(ctx, plugin, text, key, default=True, on_change_cb=None):
+    actual_default = False if key in BOOL_DEFAULTS_FALSE else default
+    if TextCheckCell:
+        try:
+            cell = TextCheckCell(ctx)
+            cur = parse_bool(plugin.get_setting(key, actual_default), actual_default)
+            cell.setTextAndCheck(text, cur, False)
+            def _click(v):
+                new_v = not parse_bool(plugin.get_setting(key, actual_default), actual_default)
+                try:
+                    plugin.set_setting(key, new_v)
+                    plugin.update_settings()
+                except Exception:
+                    pass
+                cell.setChecked(new_v)
+                if on_change_cb:
+                    try:
+                        on_change_cb()
+                    except Exception:
+                        pass
+                notify_preview_update()
+            cell.setOnClickListener(OnClickListener(_click))
+            return cell
+        except Exception:
+            pass
+
+    cell = FrameLayout(ctx)
+    cell.setMinimumHeight(dp(48))
+    cur = parse_bool(plugin.get_setting(key, actual_default), actual_default)
+    def _tgl(v):
+        try:
+            plugin.set_setting(key, v)
+            plugin.update_settings()
+        except Exception:
+            pass
+        if on_change_cb:
+            try:
+                on_change_cb()
+            except Exception:
+                pass
+        notify_preview_update()
+    s, sww, swh = sw(ctx, cur, _tgl)
+    lp_txt = FrameLayout.LayoutParams(WC, WC)
+    lp_txt.gravity = Gravity.CENTER_VERTICAL | Gravity.LEFT
+    lp_txt.leftMargin = dp(21)
+    cell.addView(tv(ctx, text, 16, tc("key_windowBackgroundWhiteBlackText", "key_dialogTextBlack")), lp_txt)
+    if s:
+        lp_s = FrameLayout.LayoutParams(sww, swh)
+        lp_s.gravity = Gravity.CENTER_VERTICAL | Gravity.RIGHT
+        lp_s.rightMargin = dp(16)
+        cell.addView(s, lp_s)
+    return cell
+
+def make_sdk_selector(ctx, plugin, title, key, items, default=0, need_divider=False, on_change_cb=None):
+    cell = TextSettingsCell(ctx) if TextSettingsCell else FrameLayout(ctx)
+    cur = [default]
+    try:
+        cur[0] = int(plugin.get_setting(key, default))
+    except Exception:
+        cur[0] = default
+    if cur[0] < 0 or cur[0] >= len(items):
+        cur[0] = default
+
+    def update():
+        if hasattr(cell, "setTextAndValue"):
+            cell.setTextAndValue(title, items[cur[0]] if 0 <= cur[0] < len(items) else "", need_divider)
+
+    update()
+
+    def on_click(v):
+        fragment = get_last_fragment()
+        activity = fragment.getParentActivity() if fragment else ctx
+        builder = AlertDialogBuilder(activity, AlertDialogBuilder.ALERT_TYPE_MESSAGE)
+        builder.set_title(title)
+        def on_item(d, idx):
+            cur[0] = idx
+            try:
+                plugin.set_setting(key, idx)
+                plugin.update_settings()
+            except Exception:
+                pass
+            update()
+            if on_change_cb:
+                try:
+                    on_change_cb()
+                except Exception:
+                    pass
+            notify_preview_update()
+            run_on_ui_thread(builder.dismiss)
+        builder.set_items(items, on_item)
+        run_on_ui_thread(lambda: (builder.show(), builder.set_cancelable(True), builder.set_canceled_on_touch_outside(True)))
+
+    cell.setOnClickListener(OnClickListener(on_click))
+    return cell
+
+def make_sdk_input(ctx, plugin, title, key, default="", need_divider=False, on_change_cb=None):
+    cell = TextSettingsCell(ctx) if TextSettingsCell else FrameLayout(ctx)
+    cur = [str(plugin.get_setting(key, default) or default)]
+
+    def update():
+        if hasattr(cell, "setTextAndValue"):
+            cell.setTextAndValue(title, cur[0], need_divider)
+
+    update()
+
+    def on_click(v):
+        fragment = get_last_fragment()
+        activity = fragment.getParentActivity() if fragment else ctx
+        builder = AlertDialogBuilder(activity, AlertDialogBuilder.ALERT_TYPE_MESSAGE)
+        builder.set_title(title)
+
+        container = FrameLayout(activity)
+        container.setPadding(dp(24), dp(8), dp(24), dp(8))
+
+        et = EditText(activity)
+        et.setText(cur[0])
+        et.setSingleLine(True)
+
+        text_color = to_jcolor(tc("key_dialogTextBlack", "key_windowBackgroundWhiteBlackText") or 0xFF000000)
+        hint_color = to_jcolor(tc("key_dialogTextGray", "key_windowBackgroundWhiteGrayText") or 0x88888888)
+        line_color = to_jcolor(tc("key_dialogInputField", "key_dialogTextGray", "key_windowBackgroundWhiteInputField") or 0xFF888888)
+
+        et.setTextColor(text_color)
+        et.setHintTextColor(hint_color)
+        et.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16)
+        et.setPadding(dp(4), dp(8), dp(4), dp(8))
+
+        try:
+            bg = et.getBackground()
+            if bg is not None:
+                bg = bg.mutate()
+                bg.setColorFilter(PorterDuffColorFilter(int(line_color), PorterDuff.Mode.SRC_IN))
+                et.setBackground(bg)
+        except Exception:
+            pass
+
+        container.addView(et, FrameLayout.LayoutParams(MP, WC))
+        builder.set_view(container)
+
+        def on_save(d, w):
+            new_val = str(et.getText().toString())
+            cur[0] = new_val
+            try:
+                plugin.set_setting(key, new_val)
+                plugin.update_settings()
+            except Exception:
+                pass
+            update()
+            if on_change_cb:
+                try:
+                    on_change_cb()
+                except Exception:
+                    pass
+            notify_preview_update()
+            run_on_ui_thread(builder.dismiss)
+
+        builder.set_positive_button("Сохранить", on_save)
+        builder.set_negative_button("Отмена", lambda d, w: run_on_ui_thread(builder.dismiss))
+        run_on_ui_thread(lambda: (builder.show(), builder.set_cancelable(True), builder.set_canceled_on_touch_outside(True)))
+
+    cell.setOnClickListener(OnClickListener(on_click))
+    return cell
+
 def make_collapsible_view(ctx, plugin, title, icn, master_key, items, hb=True, default_master=True, default_item=True, on_change_cb=None):
     def _gs(k, d=True):
+        actual_default = False if k in BOOL_DEFAULTS_FALSE else d
         try:
-            v = plugin.get_setting(k, d)
+            return parse_bool(plugin.get_setting(k, actual_default), actual_default)
         except Exception:
-            return d
-        return parse_bool(v, d)
+            return actual_default
 
     def _ss(k, v):
         try:
             plugin.set_setting(k, bool(v))
-        except Exception:
-            pass
-        try:
             plugin.update_settings()
         except Exception:
             pass
@@ -390,8 +607,9 @@ def make_collapsible_view(ctx, plugin, title, icn, master_key, items, hb=True, d
                 pass
         notify_preview_update()
 
-    m = is_master_enabled(plugin, master_key, default_master)
-    st = [_gs(k, default_item) for _, k in items]
+    actual_master_default = False if master_key in BOOL_DEFAULTS_FALSE else default_master
+    m = is_master_enabled(plugin, master_key, actual_master_default)
+    st = [_gs(item[1], default_item) for item in items]
     vh = ["%d/%d" % (sum(st), len(items)), None]
     ar = [None]
     ex = [False]
@@ -415,17 +633,11 @@ def make_collapsible_view(ctx, plugin, title, icn, master_key, items, hb=True, d
 
     inn = LinearLayout(ctx)
     inn.setOrientation(1)
-    for i, (lab, kk) in enumerate(items):
-        inn.addView(ch(ctx, lab, st[i], mc(i, kk)), LinearLayout.LayoutParams(MP, WC))
+    for i, item_def in enumerate(items):
+        inn.addView(ch(ctx, item_def[0], st[i], mc(i, item_def[1])), LinearLayout.LayoutParams(MP, WC))
 
     box = FrameLayout(ctx)
-    try:
-        box.setClipChildren(True)
-        box.setClipToPadding(True)
-    except Exception:
-        pass
     box.addView(inn, FrameLayout.LayoutParams(MP, WC))
-    box.setLayoutParams(LinearLayout.LayoutParams(MP, 0))
     box.setVisibility(View.GONE)
 
     sep = View(ctx)
@@ -437,7 +649,7 @@ def make_collapsible_view(ctx, plugin, title, icn, master_key, items, hb=True, d
     sl = LinearLayout.LayoutParams(MP, stroke)
     sl.leftMargin = dp(54 if icn else 16)
     sl.rightMargin = 0
-    sep.setVisibility(View.VISIBLE if hb else View.GONE)
+    sep.setVisibility(View.VISIBLE if (hb or ex[0]) else View.GONE)
 
     def oe(_=None):
         ex[0] = not ex[0]
@@ -447,15 +659,14 @@ def make_collapsible_view(ctx, plugin, title, icn, master_key, items, hb=True, d
                 ar[0].animate().rotation(0.0 if ex[0] else 180.0).setDuration(DUR).start()
             except Exception:
                 pass
-        if not hb:
-            sep.setVisibility(View.VISIBLE if ex[0] else View.GONE)
+        sep.setVisibility(View.VISIBLE if (hb or ex[0]) else View.GONE)
         ah(box, ex[0])
 
     v_root = LinearLayout(ctx)
     v_root.setOrientation(1)
     v_root.addView(hdr(ctx, title, icn, vh, m, oe, om, ar), LinearLayout.LayoutParams(MP, WC))
     v_root.addView(sep, sl)
-    v_root.addView(box)
+    v_root.addView(box, LinearLayout.LayoutParams(MP, WC))
     return v_root
 
 def make_mode_picker_and_blocks(plugin, mapping, on_change_global=None):
@@ -468,9 +679,6 @@ def make_mode_picker_and_blocks(plugin, mapping, on_change_global=None):
     def _ss(k, v):
         try:
             plugin.set_setting(k, int(v))
-        except Exception:
-            pass
-        try:
             plugin.update_settings()
         except Exception:
             pass
@@ -495,7 +703,6 @@ def make_mode_picker_and_blocks(plugin, mapping, on_change_global=None):
         except Exception:
             pass
         title.setPadding(dp(21), dp(12), dp(21), dp(8))
-        root_view.addView(title, LinearLayout.LayoutParams(MP, WC))
 
         scroll = HorizontalScrollView(ctx)
         scroll.setHorizontalScrollBarEnabled(False)
@@ -507,6 +714,9 @@ def make_mode_picker_and_blocks(plugin, mapping, on_change_global=None):
 
         blocks_container = LinearLayout(ctx)
         blocks_container.setOrientation(1)
+
+        extra_container = LinearLayout(ctx)
+        extra_container.setOrientation(1)
 
         modes = PICK_MODES
         cur = 0
@@ -523,19 +733,42 @@ def make_mode_picker_and_blocks(plugin, mapping, on_change_global=None):
         unsel_bg_col = tc("key_windowBackgroundGray", "key_divider") or 0x1A000000
         unsel_txt_col = tc("key_windowBackgroundWhiteBlackText", "key_dialogTextBlack") or 0xFF000000
 
+        def render_extra_sections(selected_idx):
+            extra_container.removeAllViews()
+            sections = get_extra_sections(selected_idx)
+            if not sections:
+                extra_container.setVisibility(View.GONE)
+                return
+            extra_container.setVisibility(View.VISIBLE)
+            for sec in sections:
+                extra_container.addView(make_divider(ctx, 12))
+                views = [make_sdk_header(ctx, sec["title"])]
+                items = sec.get("items", [])
+                for i, it in enumerate(items):
+                    t = it[0]
+                    is_last = (i == len(items) - 1)
+                    if t == "switch":
+                        views.append(make_sdk_switch(ctx, plugin, it[1], it[2], it[3], on_change_global))
+                    elif t == "selector":
+                        views.append(make_sdk_selector(ctx, plugin, it[1], it[2], it[3], it[4], not is_last, on_change_global))
+                    elif t == "input":
+                        views.append(make_sdk_input(ctx, plugin, it[1], it[2], it[3], not is_last, on_change_global))
+                extra_container.addView(wrap_in_card(ctx, views), LinearLayout.LayoutParams(MP, WC))
+
         def update_chips(selected_idx):
             for idx, chip in enumerate(chips):
                 is_sel = (idx == selected_idx)
                 chip.setBackground(pill_dr(sel_bg_col if is_sel else unsel_bg_col, 18))
                 chip.setTextColor(sel_txt_col if is_sel else unsel_txt_col)
+            render_extra_sections(selected_idx)
 
         def render_blocks(mode_idx):
             blocks_container.removeAllViews()
-
             blocks = get_mode_blocks(mapping, mode_idx)
-            for title_text, master_key, items, default_master, default_item in blocks:
+            total = len(blocks)
+            for i, (title_text, master_key, items, default_master, default_item) in enumerate(blocks):
                 b_view = make_collapsible_view(
-                    ctx, plugin, title_text, None, master_key, items, True,
+                    ctx, plugin, title_text, None, master_key, items, i < total - 1,
                     default_master=default_master, default_item=default_item,
                     on_change_cb=on_change_global,
                 )
@@ -564,15 +797,22 @@ def make_mode_picker_and_blocks(plugin, mapping, on_change_global=None):
             chips_container.addView(chip)
             chips.append(chip)
 
-        update_chips(cur)
         scroll.addView(chips_container, FrameLayout.LayoutParams(WC, WC))
-        root_view.addView(scroll, LinearLayout.LayoutParams(MP, WC))
-        root_view.addView(blocks_container, LinearLayout.LayoutParams(MP, WC))
+
+        picker_views = [title, scroll, blocks_container]
+        root_view.addView(wrap_in_card(ctx, picker_views), LinearLayout.LayoutParams(MP, WC))
+        root_view.addView(extra_container, LinearLayout.LayoutParams(MP, WC))
+
+        update_chips(cur)
         render_blocks(cur)
 
     def cr(ctx, lv, acc, guid, rp):
         root = LinearLayout(ctx)
         root.setLayoutParams(ViewGroup.LayoutParams(MP, WC))
+        try:
+            root.setBackgroundColor(to_jcolor(tc("key_windowBackgroundGray") or 0x0F000000))
+        except Exception:
+            pass
         try:
             bp(ctx, root)
         except Exception:

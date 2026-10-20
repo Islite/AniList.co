@@ -2,6 +2,6 @@ id: AniList_Anime
 name: AniList Anime
 description: Ищет аниме через anilist.co и shikimori.one
 author: "@Islite"
-version: "0.1.207"
+version: "0.1.396"
 icon: Islite_plugins/0
 requirements: []

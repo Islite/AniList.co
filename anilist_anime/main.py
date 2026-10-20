@@ -5,12 +5,16 @@ from base_plugin import BasePlugin, HookResult, HookStrategy
 from client_utils import get_last_fragment, run_on_queue
 from ui.bulletin import BulletinHelper
 
+import api
 from constants import (
     BOOL_DEFAULTS_FALSE, BOOL_FLAGS, DEFAULT_TEMPLATE, DEFAULT_LIST_TEMPLATE, 
     DEFAULT_POPUP_TEMPLATE, ROUTING_KEYS
 )
 from mapping import MappingState
-from search import on_popup_select, process_multi_search, process_ongoing_search, process_search, send_card_and_desc
+from search import (
+    on_popup_select, process_multi_search, process_ongoing_search, 
+    process_search, send_card_and_desc, sanitize_reply_text
+)
 from settings_ui import create_settings
 from popup_ui import show_popup
 from template_editor import TemplateEditor
@@ -67,10 +71,17 @@ class Anilist_Anime(BasePlugin):
         self.extra_en_count = gi(self, "extra_en_count", 1, 0, 5)
         self.description_in_card = gi(self, "description_in_card", 0) == 0
         self.desc_source = gi(self, "desc_source", 0)
-        self.empty_ph_space_mode = gi(self, "empty_ph_space_mode", 0)
         self.anilist_link_text = gs(self, "anilist_link_text", "AniList")
         self.hash_anime_replace = gs(self, "hash_anime_replace", "|")
         self.shikimori_link_text = gs(self, "shikimori_link_text", "Shikimori")
+        custom_ua = gs(self, "custom_user_agent", "")
+        if not custom_ua:
+            custom_ua = api.generate_unique_user_agent()
+            try:
+                self.set_setting("custom_user_agent", custom_ua)
+            except Exception:
+                pass
+        api.update_session_user_agent(custom_ua)
         tpl = self.get_setting("card_template")
         self.card_template = tpl.strip().replace("{links}", "{link1} {link2}") if tpl else DEFAULT_TEMPLATE
         for key in list(self.mapping.separator_keys):
@@ -164,7 +175,13 @@ class Anilist_Anime(BasePlugin):
                 if hasattr(rm, "messageOwner") and rm.messageOwner:
                     reply_text = getattr(rm.messageOwner, "message", "") or ""
             if not query.strip() and reply_text:
-                query = reply_text
+                first_reply_line = ""
+                for line in reply_text.splitlines():
+                    cleaned_line = line.strip()
+                    if cleaned_line:
+                        first_reply_line = cleaned_line
+                        break
+                query = sanitize_reply_text(self, first_reply_line)
             qcheck = query.strip().lower().lstrip(".")
             if qcheck in self.ongoing_commands:
                 run_on_queue(lambda: process_ongoing_search(
@@ -190,15 +207,11 @@ class Anilist_Anime(BasePlugin):
                     self._show_popup, self._on_popup_select,
                 ))
                 return HookResult(strategy=HookStrategy.CANCEL)
-            orig = [re.sub(r"\[­\]\(https://img\.anili\.st/media/\d+\)", "", query.replace("­", "")).strip()]
-            if "\n" in query:
-                lines = [l.strip() for l in query.split("\n") if l.strip()]
-                orig = []
-                for line in lines[:5]:
-                    cl = re.sub(r"^(?:\#?\S+\s*|\|\s*)+", "", line, flags=re.IGNORECASE).strip()
-                    if cl:
-                        orig.append(cl)
-            ck = f"data_{orig[0] if orig else 'empty'}"
+            clean_q = sanitize_reply_text(self, query)
+            orig = [clean_q] if clean_q else []
+            if not orig:
+                return HookResult()
+            ck = f"data_{orig[0]}"
             if ck in self.search_cache:
                 c = self.search_cache[ck]
                 ad = c[0] if isinstance(c, tuple) else c

@@ -1,6 +1,6 @@
 import json
 import requests
-from constants import DEFAULT_MAPPING
+from constants import DEFAULT_MAPPING, ANILIST_GENRES
 from utils import gb
 
 class MappingState:
@@ -96,13 +96,45 @@ class MappingState:
                     if a:
                         self._anilist_alias[str(a).lower()] = entry
 
-    def resolve_anilist_genre(self, query):
+    def resolve_categories(self, query):
         self.ensure_aliases()
-        q = query.lower().strip()
-        if q in self._anilist_alias:
-            e = self._anilist_alias[q]
-            return e["en"], e["kind"]
-        for key, e in self._anilist_alias.items():
-            if q in key or key in q:
-                return e["en"], e["kind"]
+        raw = str(query or "").strip()
+        if not raw:
+            return [], []
+        if "," in raw:
+            tokens = [t.strip() for t in raw.split(",") if t.strip()]
+        else:
+            raw_low = raw.lower()
+            if raw_low in self._anilist_alias or any(raw_low == g.lower() for g in ANILIST_GENRES):
+                tokens = [raw]
+            else:
+                tokens = [t.strip() for t in raw.split() if t.strip()]
+        genres, tags = [], []
+        for token in tokens:
+            t_low = token.lower()
+            en_name = None
+            if t_low in self._anilist_alias:
+                en_name = self._anilist_alias[t_low]["en"]
+            else:
+                for key, val in self._anilist_alias.items():
+                    if t_low == key or t_low in key or key in t_low:
+                        en_name = val["en"]
+                        break
+            final_name = en_name or token
+            matched_genre = next((g for g in ANILIST_GENRES if g.lower() == final_name.lower()), None)
+            if matched_genre:
+                if matched_genre not in genres:
+                    genres.append(matched_genre)
+            else:
+                capitalized_tag = final_name.title() if final_name.islower() else final_name
+                if capitalized_tag not in tags:
+                    tags.append(capitalized_tag)
+        return genres, tags
+
+    def resolve_anilist_genre(self, query):
+        g, t = self.resolve_categories(query)
+        if g:
+            return g[0], "genre"
+        if t:
+            return t[0], "tag"
         return None, None

@@ -25,8 +25,14 @@ from constants import (
     ROUTING_KEYS,
     SEASONS_RU,
     WEBPAGE_BOT_USERNAME,
+    SCORE_UNKNOWN,
+    DEFAULT_ONGOING_MIN_SCORE,
+    DEFAULT_SEARCH_REPLY_IGNORED,
+    MSG_TOP_NOT_FOUND,
+    MSG_TOP_SOURCE_UNAVAILABLE
 )
 from formatter import (
+    calc_plain_len,
     clean_template_output,
     format_media_full,
     resolve_card_options,
@@ -37,10 +43,31 @@ from formatter import (
     parse_shikimori_media_list,
     row_from_id_data,
 )
-from utils import is_cyrillic, show_error, show_success
+from utils import is_cyrillic, show_error, show_success, gb, gf, gs
 
 _REFRESHED_COVERS_CACHE = {}
 _DL_COVER_CACHE = {}
+
+def sanitize_reply_text(plugin, text):
+    if not text:
+        return ""
+    ignored_raw = gs(plugin, "search_reply_ignored_words", DEFAULT_SEARCH_REPLY_IGNORED)
+    tokens = [t.strip() for t in str(ignored_raw).split(",") if t.strip()]
+    tokens.sort(key=len, reverse=True)
+    cleaned = text
+    for token in tokens:
+        cleaned = re.sub(re.escape(token), " ", cleaned, flags=re.IGNORECASE)
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+def sanitize_candidates(plugin, candidates):
+    res = []
+    for c in candidates or []:
+        cleaned = sanitize_reply_text(plugin, c)
+        if cleaned and cleaned not in res:
+            res.append(cleaned)
+        elif c and c not in res:
+            res.append(c)
+    return res or candidates
 
 def prefer_shiki(plugin, query=""):
     if plugin.primary_source == 1:
@@ -61,6 +88,7 @@ def cache_result(cache, cache_key, anilist_data, successful_original, shiki_data
     return anilist_data, successful_original, shiki_data
 
 def get_data_by_id_or_search(plugin, original_candidates, cache_key, cache):
+    candidates = sanitize_candidates(plugin, original_candidates)
     if cache_key in cache:
         c = cache[cache_key]
         if isinstance(c, tuple) and len(c) >= 4 and (time.time() - c[3] < 3600):
@@ -70,7 +98,7 @@ def get_data_by_id_or_search(plugin, original_candidates, cache_key, cache):
 
     anilist_data = shiki_data = None
     successful_original = ""
-    first = original_candidates[0] if original_candidates else ""
+    first = candidates[0] if candidates else ""
 
     if first and first.isdigit():
         id_int = int(first)
@@ -79,29 +107,47 @@ def get_data_by_id_or_search(plugin, original_candidates, cache_key, cache):
         
         if id_src == 0:
             if plugin.use_anilist:
-                anilist_data = api.fetch_by_id(id_int)
-            if anilist_data and plugin.use_shikimori:
-                mal_id = anilist_data.get("idMal")
+                try:
+                    anilist_data = api.fetch_by_id(id_int)
+                except Exception:
+                    anilist_data = None
+            if plugin.use_shikimori:
+                mal_id = anilist_data.get("idMal") if anilist_data else None
                 if mal_id:
-                    shiki_data = api.search_shikimori_by_id(str(mal_id), cache)
-                if not shiki_data:
+                    try:
+                        shiki_data = api.search_shikimori_by_id(str(mal_id), cache)
+                    except Exception:
+                        shiki_data = None
+                if not shiki_data and anilist_data:
                     t = anilist_data.get("title") or {}
                     en = t.get("english") or t.get("romaji") or t.get("userPreferred")
                     if en:
-                        shiki_data = api.search_shikimori(en, cache)
+                        try:
+                            shiki_data = api.search_shikimori(en, cache)
+                        except Exception:
+                            shiki_data = None
         else:
             if plugin.use_shikimori:
-                shiki_data = api.search_shikimori_by_id(first, cache)
-            if shiki_data and plugin.use_anilist:
-                mal = shiki_data.get("malId") or shiki_data.get("myanimelist_id") or shiki_data.get("id_mal")
+                try:
+                    shiki_data = api.search_shikimori_by_id(first, cache)
+                except Exception:
+                    shiki_data = None
+            if plugin.use_anilist:
+                mal = (shiki_data.get("malId") or shiki_data.get("myanimelist_id") or shiki_data.get("id_mal")) if shiki_data else None
                 if mal:
-                    anilist_data = api.fetch_by_mal_id(int(mal))
-                if not anilist_data:
+                    try:
+                        anilist_data = api.fetch_by_mal_id(int(mal))
+                    except Exception:
+                        anilist_data = None
+                if not anilist_data and shiki_data:
                     en = shiki_data.get("name")
                     if not en and isinstance(shiki_data.get("english"), list) and shiki_data.get("english"):
                         en = shiki_data["english"][0]
                     if en:
-                        anilist_data = api.fetch_anilist(str(en))
+                        try:
+                            anilist_data = api.fetch_anilist(str(en))
+                        except Exception:
+                            anilist_data = None
 
         if anilist_data or shiki_data:
             return cache_result(cache, cache_key, anilist_data, successful_original, shiki_data)
@@ -109,63 +155,87 @@ def get_data_by_id_or_search(plugin, original_candidates, cache_key, cache):
 
     pref = prefer_shiki(plugin, first)
     if pref and plugin.use_shikimori:
-        for term in original_candidates:
-            shiki_data = api.search_shikimori(term, cache)
+        for term in candidates:
+            try:
+                shiki_data = api.search_shikimori(term, cache)
+            except Exception:
+                shiki_data = None
             if shiki_data:
                 successful_original = term
                 if plugin.use_anilist:
-                    mal = shiki_data.get("malId") or shiki_data.get("myanimelist_id") or shiki_data.get("id_mal")
-                    if mal:
-                        anilist_data = api.fetch_by_mal_id(int(mal))
-                    if not anilist_data:
-                        anilist_en = shiki_data.get("name") or (shiki_data.get("english") or [None])[0] or term
-                        anilist_data = api.fetch_anilist(str(anilist_en))
+                    try:
+                        mal = shiki_data.get("malId") or shiki_data.get("myanimelist_id") or shiki_data.get("id_mal")
+                        if mal:
+                            anilist_data = api.fetch_by_mal_id(int(mal))
+                        if not anilist_data:
+                            anilist_en = shiki_data.get("name") or (shiki_data.get("english") or [None])[0] or term
+                            anilist_data = api.fetch_anilist(str(anilist_en))
+                    except Exception:
+                        anilist_data = None
                 return cache_result(cache, cache_key, anilist_data, successful_original, shiki_data)
     if plugin.use_anilist:
-        for term in original_candidates:
-            anilist_data = api.fetch_anilist(term)
+        for term in candidates:
+            try:
+                anilist_data = api.fetch_anilist(term)
+            except Exception:
+                anilist_data = None
             if anilist_data:
                 successful_original = term
                 if plugin.use_shikimori:
-                    mal_id = anilist_data.get("idMal")
-                    if mal_id:
-                        shiki_data = api.search_shikimori_by_id(str(mal_id), cache)
-                    if not shiki_data:
-                        t = anilist_data.get("title") or {}
-                        en = t.get("english") or t.get("romaji") or t.get("native")
-                        if en:
-                            shiki_data = api.search_shikimori(en, cache)
+                    try:
+                        mal_id = anilist_data.get("idMal")
+                        if mal_id:
+                            shiki_data = api.search_shikimori_by_id(str(mal_id), cache)
+                        if not shiki_data:
+                            t = anilist_data.get("title") or {}
+                            en = t.get("english") or t.get("romaji") or t.get("native")
+                            if en:
+                                shiki_data = api.search_shikimori(en, cache)
+                    except Exception:
+                        shiki_data = None
                 return cache_result(cache, cache_key, anilist_data, successful_original, shiki_data)
     if not pref and plugin.use_shikimori:
-        for term in original_candidates:
-            shiki_data = api.search_shikimori(term, cache)
+        for term in candidates:
+            try:
+                shiki_data = api.search_shikimori(term, cache)
+            except Exception:
+                shiki_data = None
             if shiki_data:
                 successful_original = term
                 if plugin.use_anilist:
-                    mal = shiki_data.get("malId") or shiki_data.get("myanimelist_id") or shiki_data.get("id_mal")
-                    if mal:
-                        anilist_data = api.fetch_by_mal_id(int(mal))
-                    if not anilist_data:
-                        anilist_en = shiki_data.get("name") or (shiki_data.get("english") or [None])[0] or term
-                        anilist_data = api.fetch_anilist(str(anilist_en))
+                    try:
+                        mal = shiki_data.get("malId") or shiki_data.get("myanimelist_id") or shiki_data.get("id_mal")
+                        if mal:
+                            anilist_data = api.fetch_by_mal_id(int(mal))
+                        if not anilist_data:
+                            anilist_en = shiki_data.get("name") or (shiki_data.get("english") or [None])[0] or term
+                            anilist_data = api.fetch_anilist(str(anilist_en))
+                    except Exception:
+                        anilist_data = None
                 return cache_result(cache, cache_key, anilist_data, successful_original, shiki_data)
     return None, "", None
 
-def build_send_params(account, base, text, parse_mode=None):
+def build_send_params(account, base, text, parse_mode=None, no_webpage=False):
     p = {"peer": base["peer"], "text": text, "parse_mode": parse_mode}
+    if no_webpage:
+        p["no_webpage"] = True
     for k in ROUTING_KEYS:
         if base.get(k) is not None:
             p[k] = base[k]
     return p
 
-def send_only_success(plugin, text, account, base):
+def send_only_success(plugin, text, account, base, no_webpage=True):
     try:
-        cleaned = clean_template_output(text, None, plugin.empty_ph_space_mode)
+        cleaned = clean_template_output(text, None)
         if not cleaned.strip():
             show_error(MSG_ERR_FAILED_SEND)
             return
-        p = build_send_params(account, base, cleaned, "HTML" if plugin.enable_html_card else None)
-        send_text(account=account, **p)
+        p = build_send_params(account, base, cleaned, "HTML" if plugin.enable_html_card else None, no_webpage=no_webpage)
+        try:
+            send_text(account=account, **p)
+        except TypeError:
+            p.pop("no_webpage", None)
+            send_text(account=account, **p)
         show_success(MSG_SENT)
     except Exception:
         show_error(MSG_ERR_FAILED_SEND)
@@ -174,8 +244,12 @@ def send_description_separate(description_raw, account, base):
     if not description_raw.strip():
         return
     try:
-        p = build_send_params(account, base, DESC_BLOCKQUOTE_TEMPLATE.format(description_raw), "HTML")
-        send_text(account=account, **p)
+        p = build_send_params(account, base, DESC_BLOCKQUOTE_TEMPLATE.format(description_raw), "HTML", no_webpage=True)
+        try:
+            send_text(account=account, **p)
+        except TypeError:
+            p.pop("no_webpage", None)
+            send_text(account=account, **p)
     except Exception:
         show_error(MSG_ERR_FAILED_SEND)
 
@@ -247,19 +321,6 @@ def _peer_from_base(base, account=None):
         pass
     return None
 
-def _setting_int(plugin, key, default=0):
-    try:
-        if hasattr(plugin, "get_setting"):
-            v = plugin.get_setting(key, default)
-            if v is not None and v != "":
-                return int(v)
-    except Exception:
-        pass
-    try:
-        return int(getattr(plugin, key, default) or default)
-    except Exception:
-        return default
-
 def _dl_cover_file(url, aid):
     if not url:
         return None
@@ -293,7 +354,7 @@ def _dl_cover_file(url, aid):
             _DL_COVER_CACHE[cache_key] = path
             return path
             
-        headers = {"User-Agent": "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36", "Accept": "image/*,*/*"}
+        headers = {"User-Agent": api.get_current_user_agent(), "Accept": "image/*,*/*"}
         resp = requests.get(url, timeout=12, headers=headers)
         if resp.status_code == 200 and resp.content and len(resp.content) >= 500:
             with open(path, "wb") as f:
@@ -307,7 +368,7 @@ def _dl_cover_file(url, aid):
 
 def _send_media_with_caption(peer, path, caption, invert=False, account=None, base=None):
     cap = str(caption or "")
-    if len(re.sub(r'<[^>]+>', '', cap)) > 2048:
+    if calc_plain_len(cap) > 2048:
         cap = re.sub(r'<[^>]+>', '', cap)[:2044] + "…"
         
     try:
@@ -390,12 +451,12 @@ def _send_media_with_caption(peer, path, caption, invert=False, account=None, ba
         show_error(MSG_ERR_MEDIA_LOAD)
     return False
 
-def _send_html_text(plugin, text, account, base, invert=False):
-    cleaned = clean_template_output(text, None, getattr(plugin, "empty_ph_space_mode", 0))
+def _send_html_text(plugin, text, account, base, invert=False, no_webpage=False):
+    cleaned = clean_template_output(text, None)
     if not cleaned.strip():
         return False
     parse = "HTML" if getattr(plugin, "enable_html_card", True) else None
-    params = build_send_params(account, base, cleaned, parse)
+    params = build_send_params(account, base, cleaned, parse, no_webpage=no_webpage)
     if invert:
         try:
             params["invert_media"] = True
@@ -409,6 +470,13 @@ def _send_html_text(plugin, text, account, base, invert=False):
     try:
         send_text(account=account, **params)
         return True
+    except TypeError:
+        params.pop("no_webpage", None)
+        try:
+            send_text(account=account, **params)
+            return True
+        except Exception:
+            return False
     except Exception:
         return False
 
@@ -443,21 +511,23 @@ def send_card_and_desc(plugin, data, shiki, account, base, mapping, opts=None):
             pass
         path = _dl_cover_file(cover, aid)
         if path:
-            cleaned = clean_template_output(card, None, getattr(plugin, "empty_ph_space_mode", 0))
+            cleaned = clean_template_output(card, None)
             if _send_media_with_caption(peer, path, cleaned, invert=invert, account=account, base=base):
                 show_success(MSG_SENT)
                 desc = get_description(plugin, data, shiki)
-                if plugin.show_description and desc.strip() and not plugin.description_in_card:
+                show_desc = gb(plugin, "coll_fields_main", True) and gb(plugin, "show_description", False)
+                if show_desc and desc.strip() and not getattr(plugin, "description_in_card", True):
                     run_on_queue(lambda: send_description_separate(desc, account, base))
                 return
 
-    ok = _send_html_text(plugin, card, account, base, invert=invert)
+    ok = _send_html_text(plugin, card, account, base, invert=invert, no_webpage=no_link)
     if ok:
         show_success(MSG_SENT)
     else:
         show_error(MSG_ERR_FAILED_SEND)
     desc = get_description(plugin, data, shiki)
-    if ok and plugin.show_description and desc.strip() and not plugin.description_in_card:
+    show_desc = gb(plugin, "coll_fields_main", True) and gb(plugin, "show_description", False)
+    if ok and show_desc and desc.strip() and not getattr(plugin, "description_in_card", True):
         run_on_queue(lambda: send_description_separate(desc, account, base))
 
 def process_search(plugin, account, base, original_candidates, cache, mapping):
@@ -473,12 +543,26 @@ def process_search(plugin, account, base, original_candidates, cache, mapping):
 
 def multi_search_by_genre(plugin, query, pref, mapping, cache):
     if not getattr(plugin, "use_anilist", True):
+        return None, pref
+    genres, tags = mapping.resolve_categories(query)
+    if not genres and not tags:
         return [], pref
-    al_en, al_kind = mapping.resolve_anilist_genre(query)
-    is_tag = al_kind == "tag"
-    raw = api.multi_search_anilist_genre(al_en or query, force_tag=is_tag)
-    if raw:
-        return parse_anilist_media_list(raw, mapping), False
+    try:
+        raw = api.fetch_top_anilist(genres=genres, tags=tags)
+    except Exception:
+        return None, pref
+    if raw is None:
+        return None, pref
+    matched = []
+    req_g = [g.lower() for g in genres]
+    req_t = [t.lower() for t in tags]
+    for item in raw:
+        item_genres = [str(g).lower() for g in (item.get("genres") or []) if g]
+        item_tags = [str(t.get("name") if isinstance(t, dict) else t).lower() for t in (item.get("tags") or []) if t]
+        if all(rg in item_genres for rg in req_g) and all(rt in item_tags for rt in req_t):
+            matched.append(item)
+    if matched:
+        return parse_anilist_media_list(matched, mapping), False
     return [], pref
 
 def _text_multi_search(plugin, q, pref, cache, mapping):
@@ -489,19 +573,31 @@ def _text_multi_search(plugin, q, pref, cache, mapping):
     results = None
     actual_shiki = False
     if pref and plugin.use_shikimori:
-        raw = api.multi_search_shikimori(q)
+        try:
+            raw = api.multi_search_shikimori(q)
+        except Exception:
+            raw = None
         actual_shiki = True
         results = parse_shikimori_media_list(raw, mapping) if raw is not None else None
         if not results and plugin.use_anilist:
-            raw = api.multi_search_anilist(q)
+            try:
+                raw = api.multi_search_anilist(q)
+            except Exception:
+                raw = None
             results = parse_anilist_media_list(raw, mapping) if raw is not None else None
             actual_shiki = False
     else:
-        raw = api.multi_search_anilist(q) if plugin.use_anilist else None
+        try:
+            raw = api.multi_search_anilist(q) if plugin.use_anilist else None
+        except Exception:
+            raw = None
         results = parse_anilist_media_list(raw, mapping) if raw is not None else None
         actual_shiki = False
         if (not results) and plugin.use_shikimori:
-            raw = api.multi_search_shikimori(q)
+            try:
+                raw = api.multi_search_shikimori(q)
+            except Exception:
+                raw = None
             results = parse_shikimori_media_list(raw, mapping) if raw is not None else None
             actual_shiki = True
     if results is not None:
@@ -524,7 +620,16 @@ def process_multi_search(plugin, query, is_genre, account, base, cache, mapping,
             actual_shiki = id_pref
 
     if is_genre:
+        if not getattr(plugin, "use_anilist", True):
+            show_error(MSG_TOP_SOURCE_UNAVAILABLE)
+            return
         results, actual_shiki = multi_search_by_genre(plugin, q, pref, mapping, cache)
+        if results is None:
+            show_error(MSG_TOP_SOURCE_UNAVAILABLE)
+            return
+        if not results:
+            show_error(MSG_TOP_NOT_FOUND)
+            return
     else:
         results, text_shiki = _text_multi_search(plugin, q, pref, cache, mapping)
         if results is None and id_row is None:
@@ -553,7 +658,7 @@ def process_multi_search(plugin, query, is_genre, account, base, cache, mapping,
         show_error(MSG_ERR_API)
         return
     if not results:
-        show_error(MSG_NOT_FOUND if not is_genre else MSG_NOT_FOUND_GENRE)
+        show_error(MSG_NOT_FOUND if not is_genre else MSG_TOP_NOT_FOUND)
         return
     if plugin.search_ui_mode == 1:
         run_on_queue(lambda: on_select_cb(results[0], account, base))
@@ -581,29 +686,47 @@ def on_popup_select(plugin, res, account, base, cache, mapping, opts=None):
 
         if is_shiki_src or (not use_al and use_sh):
             if use_sh and not shiki_data and rid:
-                shiki_data = api.search_shikimori_by_id(str(rid), cache)
+                try:
+                    shiki_data = api.search_shikimori_by_id(str(rid), cache)
+                except Exception:
+                    shiki_data = None
             if shiki_data and use_al and not anilist_data:
                 mal = shiki_data.get("malId") or shiki_data.get("myanimelist_id") or shiki_data.get("id_mal")
                 if mal:
-                    anilist_data = api.fetch_by_mal_id(int(mal))
+                    try:
+                        anilist_data = api.fetch_by_mal_id(int(mal))
+                    except Exception:
+                        anilist_data = None
                 if not anilist_data:
                     en = shiki_data.get("name")
                     if not en and isinstance(shiki_data.get("english"), list) and shiki_data.get("english"):
                         en = shiki_data["english"][0]
                     if en:
-                        anilist_data = api.fetch_anilist(str(en))
+                        try:
+                            anilist_data = api.fetch_anilist(str(en))
+                        except Exception:
+                            anilist_data = None
         else:
             if use_al and rid and not anilist_data:
-                anilist_data = api.fetch_by_id(int(rid))
+                try:
+                    anilist_data = api.fetch_by_id(int(rid))
+                except Exception:
+                    anilist_data = None
             if anilist_data and use_sh and not shiki_data:
                 mal_id = anilist_data.get("idMal")
                 if mal_id:
-                    shiki_data = api.search_shikimori_by_id(str(mal_id), cache)
+                    try:
+                        shiki_data = api.search_shikimori_by_id(str(mal_id), cache)
+                    except Exception:
+                        shiki_data = None
                 if not shiki_data:
                     t = anilist_data.get("title") or {}
                     en = t.get("english") or t.get("romaji") or t.get("userPreferred")
                     if en:
-                        shiki_data = api.search_shikimori(en, cache)
+                        try:
+                            shiki_data = api.search_shikimori(en, cache)
+                        except Exception:
+                            shiki_data = None
 
         if shiki_data and use_sh and int(getattr(plugin, "cover_source", 0) or 0) == 1:
             try:
@@ -621,6 +744,15 @@ def on_popup_select(plugin, res, account, base, cache, mapping, opts=None):
     except Exception:
         show_error(MSG_ERR_LOAD)
 
+def _parse_score_float(score_str):
+    if not score_str or score_str in (SCORE_UNKNOWN, "?", "?/10", "None", ""):
+        return None
+    try:
+        clean = str(score_str).replace("/10", "").strip()
+        return float(clean)
+    except Exception:
+        return None
+
 def process_ongoing_search(plugin, account, base, cache, mapping, show_popup_cb, on_select_cb):
     try:
         results = []
@@ -629,25 +761,45 @@ def process_ongoing_search(plugin, account, base, cache, mapping, show_popup_cb,
         pref = (ong_src == 1 and plugin.use_shikimori) or (not plugin.use_anilist and plugin.use_shikimori)
 
         if pref and plugin.use_shikimori:
-            raw = api.fetch_ongoing_shikimori()
+            raw = None
+            try:
+                raw = api.fetch_ongoing_shikimori()
+            except Exception:
+                raw = None
             if raw:
                 actual_shiki = True
                 results = parse_ongoing_shikimori_results(raw, mapping)
             if not results and plugin.use_anilist:
-                media = api.fetch_ongoing_anilist()
+                media = None
+                try:
+                    media = api.fetch_ongoing_anilist()
+                except Exception:
+                    media = None
                 if media:
                     results = parse_ongoing_anilist_results(media, mapping)
         elif plugin.use_anilist:
-            media = api.fetch_ongoing_anilist()
+            media = None
+            try:
+                media = api.fetch_ongoing_anilist()
+            except Exception:
+                media = None
             if media:
                 results = parse_ongoing_anilist_results(media, mapping)
             if not results and plugin.use_shikimori:
-                raw = api.fetch_ongoing_shikimori()
+                raw = None
+                try:
+                    raw = api.fetch_ongoing_shikimori()
+                except Exception:
+                    raw = None
                 if raw:
                     actual_shiki = True
                     results = parse_ongoing_shikimori_results(raw, mapping)
         elif plugin.use_shikimori:
-            raw = api.fetch_ongoing_shikimori()
+            raw = None
+            try:
+                raw = api.fetch_ongoing_shikimori()
+            except Exception:
+                raw = None
             if raw:
                 actual_shiki = True
                 results = parse_ongoing_shikimori_results(raw, mapping)
@@ -668,6 +820,18 @@ def process_ongoing_search(plugin, account, base, cache, mapping, show_popup_cb,
             return False
 
         results = [r for r in results if _has_aired(r)]
+
+        min_score = gf(plugin, "ongoing_min_score", float(DEFAULT_ONGOING_MIN_SCORE), 0.0, 10.0)
+        exclude_unknown = gb(plugin, "ongoing_exclude_unknown_score", True)
+
+        def _score_ok(r):
+            val = _parse_score_float(r.get("score"))
+            if val is None:
+                return not exclude_unknown
+            return val >= min_score
+
+        results = [r for r in results if _score_ok(r)]
+
         if getattr(plugin, "exclude_hentai", True):
             def _is_hentai(r):
                 try:
@@ -680,11 +844,11 @@ def process_ongoing_search(plugin, account, base, cache, mapping, show_popup_cb,
             show_error(MSG_NOT_FOUND)
             return
 
-        results.sort(key=lambda x: (x.get("day") if x.get("day") is not None else 9, x.get("title") or ""))
+        results.sort(key=lambda x: (x.get("day") if x.get("day") is not None else 6, x.get("title") or ""))
         
         n = datetime.utcnow()
         lab, year_offset = SEASONS_RU.get(n.month, ("осень", 0))
-        q = f"{lab} {n.year + year_offset}г."
+        q = f"{lab} {n.year + year_offset}"
         run_on_ui_thread(lambda: show_popup_cb(results, q, actual_shiki, False, account, base, ongoing=True))
     except Exception:
         show_error(MSG_ERR_ONGOING)
