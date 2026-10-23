@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <meta name="referrer" content="origin">
+  <title>Kodik Player</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: black;
+      color: white;
+      overflow: hidden;
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+    iframe {
+      border: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .msg {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      padding: 24px;
+      box-sizing: border-box;
+      text-align: center;
+      font-size: 15px;
+    }
+  </style>
+</head>
+<body>
+  <script>
+    (function () {
+      var params = new URLSearchParams(window.location.search);
+      var raw = (params.get("src") || params.get("url") || "").trim();
+      if (raw.indexOf("//") === 0) {
+        raw = "https:" + raw;
+      }
+      var target = null;
+      try {
+        var parsed = new URL(raw);
+        if (parsed.protocol === "https:" || parsed.protocol === "http:") {
+          target = parsed.href;
+        }
+      } catch (e) {}
+
+      if (!target) {
+        var box = document.createElement("div");
+        box.className = "msg";
+        box.textContent = "Передайте ссылку плеера в параметре ?src=";
+        document.body.appendChild(box);
+        return;
+      }
+
+      var frame = document.createElement("iframe");
+      frame.setAttribute("allowfullscreen", "true");
+      frame.setAttribute("webkitallowfullscreen", "true");
+      frame.setAttribute("mozallowfullscreen", "true");
+      frame.setAttribute("allow", "autoplay; fullscreen; picture-in-picture; encrypted-media");
+      frame.src = target;
+      document.body.appendChild(frame);
+    })();
+  </script>
+</body>
+</html>
