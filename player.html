@@ -49,7 +49,7 @@ video,iframe{width:100%;height:100%;max-width:100%;max-height:100%;object-fit:co
 .toast{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--panel-bg);border:0;padding:10px 18px;border-radius:10px;font-size:12px;font-weight:600;text-align:center;max-width:86%;z-index:45;box-shadow:0 10px 25px rgba(0,0,0,0.85);display:none}
 .badge{position:absolute;top:18%;left:50%;transform:translateX(-50%);background:var(--panel-bg);border:0;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;display:none;pointer-events:none;z-index:40}
 .modal-bg{position:absolute;inset:0;background:rgba(0,0,0,0.85);backdrop-filter:blur(3px);z-index:60;display:none;align-items:flex-end;justify-content:center}
-.modal-sheet{width:100%;max-width:440px;background:var(--sheet-bg);border-top-left-radius:18px;border-top-right-radius:18px;border:0;padding:14px;max-height:76%;display:flex;flex-direction:column}
+.modal-sheet{width:100%;max-width:440px;background:var(--sheet-bg);border-top-left-radius:18px;border-top-right-radius:18px;border:0;padding:14px;max-height:80%;display:flex;flex-direction:column}
 .modal-hdr{display:flex;align-items:center;justify-content:space-between;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,0.12)}
 .modal-title{font-size:13px;font-weight:700;color:var(--text-main)}
 .dropdown{position:absolute;background:rgba(28,28,30,0.96);border:0;border-radius:10px;padding:4px;z-index:70;display:none;flex-direction:column;box-shadow:0 12px 30px rgba(0,0,0,0.9);max-height:242px;overflow-y:auto}
@@ -113,11 +113,42 @@ body.locked .top-bar,body.locked .center-ctrls,body.locked .bottom-bar{display:n
           <button class="pill-btn" id="closeCreateRoomBtn">✕</button>
         </div>
         <div style="padding:14px 0">
-          <div style="font-size:11px;color:var(--text-sub);margin-bottom:6px">ВАШЕ ИМЯ (ОБЯЗАТЕЛЬНО)</div>
-          <input type="text" id="rNickInp" class="inp-field" placeholder="Введите ваш ник">
-          <div style="font-size:11px;color:var(--text-sub);margin:10px 0 6px">ПАРОЛЬ (НЕОБЯЗАТЕЛЬНО)</div>
-          <input type="password" id="rPassInp" class="inp-field" placeholder="Оставьте пустым если нет">
+          <div style="font-size:11px;color:var(--text-sub);margin-bottom:6px">ВАШ НИКНЕЙМ (ОБЯЗАТЕЛЬНО)</div>
+          <input type="text" id="rNickInp" class="inp-field" placeholder="Например: Иван">
+          <div style="font-size:11px;color:var(--text-sub);margin:10px 0 6px">ПАРОЛЬ КОМНАТЫ (НЕОБЯЗАТЕЛЬНО)</div>
+          <input type="password" id="rPassInp" class="inp-field" placeholder="Оставьте пустым для открытой комнаты">
           <button class="pill-btn" id="submitCreateRoomBtn" style="width:100%;margin-top:14px;padding:12px;justify-content:center;background:#6366f1">Открыть сервер комнаты</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-bg" id="joinRoomModal">
+      <div class="modal-sheet">
+        <div class="modal-hdr">
+          <span class="modal-title">Вход в комнату: <span id="jRoomCodeLbl">...</span></span>
+          <button class="pill-btn" id="closeJoinRoomBtn">✕</button>
+        </div>
+        <div style="padding:14px 0">
+          <div style="font-size:11px;color:var(--text-sub);margin-bottom:6px">КОД КОМНАТЫ</div>
+          <input type="text" id="jCodeInp" class="inp-field" placeholder="KDK1234">
+          <div style="font-size:11px;color:var(--text-sub);margin:10px 0 6px">ВАШ НИКНЕЙМ (ОБЯЗАТЕЛЬНО)</div>
+          <input type="text" id="jNickInp" class="inp-field" placeholder="Введите ваш ник">
+          <div style="font-size:11px;color:var(--text-sub);margin:10px 0 6px">ПАРОЛЬ КОМНАТЫ (ЕСЛИ УСТАНОВЛЕН)</div>
+          <input type="password" id="jPassInp" class="inp-field" placeholder="Пароль от хоста">
+          <button class="pill-btn" id="submitJoinRoomBtn" style="width:100%;margin-top:14px;padding:12px;justify-content:center;background:#6366f1">Войти в совместный просмотр</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-bg" id="roomHubModal">
+      <div class="modal-sheet">
+        <div class="modal-hdr">
+          <span class="modal-title">Совместный просмотр</span>
+          <button class="pill-btn" id="closeRoomHubBtn">✕</button>
+        </div>
+        <div style="padding:14px 0;display:flex;flex-direction:column;gap:10px">
+          <button class="pill-btn" id="hubCreateBtn" style="padding:12px;justify-content:center;background:#6366f1">➕ Создать новую комнату</button>
+          <button class="pill-btn" id="hubJoinBtn" style="padding:12px;justify-content:center;background:rgba(255,255,255,0.12)">🚪 Войти по коду комнаты</button>
         </div>
       </div>
     </div>
@@ -164,8 +195,11 @@ body.locked .top-bar,body.locked .center-ctrls,body.locked .bottom-bar{display:n
   var seek=document.getElementById('seek'),timelineBuffer=document.getElementById('timelineBuffer'),timelinePlayed=document.getElementById('timelinePlayed');
   var timeLbl=document.getElementById('timeLbl'),skip125Btn=document.getElementById('skip125Btn'),fsBtn=document.getElementById('fsBtn');
   var roomBtn=document.getElementById('roomBtn'),roomBtnLbl=document.getElementById('roomBtnLbl');
+  var roomHubModal=document.getElementById('roomHubModal'),closeRoomHubBtn=document.getElementById('closeRoomHubBtn'),hubCreateBtn=document.getElementById('hubCreateBtn'),hubJoinBtn=document.getElementById('hubJoinBtn');
   var createRoomModal=document.getElementById('createRoomModal'),closeCreateRoomBtn=document.getElementById('closeCreateRoomBtn');
   var rNickInp=document.getElementById('rNickInp'),rPassInp=document.getElementById('rPassInp'),submitCreateRoomBtn=document.getElementById('submitCreateRoomBtn');
+  var joinRoomModal=document.getElementById('joinRoomModal'),closeJoinRoomBtn=document.getElementById('closeJoinRoomBtn'),jRoomCodeLbl=document.getElementById('jRoomCodeLbl');
+  var jCodeInp=document.getElementById('jCodeInp'),jNickInp=document.getElementById('jNickInp'),jPassInp=document.getElementById('jPassInp'),submitJoinRoomBtn=document.getElementById('submitJoinRoomBtn');
   var viewersModal=document.getElementById('viewersModal'),closeViewersBtn=document.getElementById('closeViewersBtn');
   var vRoomCodeLbl=document.getElementById('vRoomCodeLbl'),copyRoomLinkBtn=document.getElementById('copyRoomLinkBtn');
   var viewersListContainer=document.getElementById('viewersListContainer'),leaveRoomBtn=document.getElementById('leaveRoomBtn');
@@ -173,10 +207,12 @@ body.locked .top-bar,body.locked .center-ctrls,body.locked .bottom-bar{display:n
   var streamUrlInp=document.getElementById('streamUrlInp'),submitUrlBtn=document.getElementById('submitUrlBtn');
 
   var qParams=new URLSearchParams(window.location.search);
-  var targetRoom=qParams.get('room')||'';
-  var hls=null,curUrl='',rate=1.0,isLocked=false,isFs=false,hudTimer=null,bTimer=null,draggingSeek=false;
-  var activeRoomCode=null,myPeerId='p_'+Math.random().toString(36).substring(2,8),myNickName='',isHost=false,isAdmin=false;
-  var mqttClient=null,roomUsers={},sessionAdmins={},heartbeatTimer=null;
+  var targetRoomCode=(qParams.get('room')||'').trim().toUpperCase();
+  var savedNick=window.localStorage?window.localStorage.getItem('etg_kdk_nick')||'':'';
+
+  var hls=null,curUrl='',rate=1.0,isLocked=false,hudTimer=null,bTimer=null,draggingSeek=false;
+  var activeRoomCode=null,myPeerId='p_'+Math.random().toString(36).substring(2,9),myNickName=savedNick,isHost=false,isAdmin=false;
+  var roomExpectedPass='',mqttClient=null,roomUsers={},sessionAdmins={},heartbeatTimer=null;
   var SPEEDS=[0.25,0.5,0.75,1.0,1.25,1.5,1.75,2.0,2.5,3.0];
 
   function fmtRate(v){var n=parseFloat(v)||1;return (n%1===0?n.toFixed(0):n.toFixed(2).replace(/0+$/,''))+'x';}
@@ -266,7 +302,7 @@ body.locked .top-bar,body.locked .center-ctrls,body.locked .bottom-bar{display:n
   lockBtn.onclick=function(e){
     e.stopPropagation();isLocked=!isLocked;
     document.body.classList.toggle('locked',isLocked);
-    speedDrop.style.display='none';createRoomModal.style.display='none';viewersModal.style.display='none';
+    speedDrop.style.display='none';createRoomModal.style.display='none';joinRoomModal.style.display='none';roomHubModal.style.display='none';viewersModal.style.display='none';
     flash(isLocked?'Экран заблокирован':'Разблокировано');
   };
 
@@ -317,6 +353,7 @@ body.locked .top-bar,body.locked .center-ctrls,body.locked .bottom-bar{display:n
   };
 
   function mountVideo(url,startSec){
+    if(!url||url===curUrl)return;
     curUrl=url;
     if(window.Hls&&window.Hls.isSupported()&&url.indexOf('.m3u8')!==-1){
       if(hls)hls.destroy();
@@ -338,34 +375,63 @@ body.locked .top-bar,body.locked .center-ctrls,body.locked .bottom-bar{display:n
   roomBtn.onclick=function(e){
     e.stopPropagation();
     if(!activeRoomCode){
-      rNickInp.value=myNickName||'';createRoomModal.style.display='flex';
+      roomHubModal.style.display='flex';
     }else{
       vRoomCodeLbl.textContent=activeRoomCode;renderViewersList();viewersModal.style.display='flex';
     }
   };
 
-  closeCreateRoomBtn.onclick=function(){createRoomModal.style.display='none';};
-  closeViewersBtn.onclick=function(){viewersModal.style.display='none';};
-  submitCreateRoomBtn.onclick=function(){
-    var n=(rNickInp.value||'').trim();
-    if(!n){flash('Введите ник');return;}
-    myNickName=n;createRoomModal.style.display='none';
-    startRoomSession('KDK'+Math.floor(1000+Math.random()*9000),true,true);
+  closeRoomHubBtn.onclick=function(){roomHubModal.style.display='none';};
+  hubCreateBtn.onclick=function(){
+    roomHubModal.style.display='none';
+    rNickInp.value=myNickName||'';createRoomModal.style.display='flex';
+  };
+  hubJoinBtn.onclick=function(){
+    roomHubModal.style.display='none';
+    jCodeInp.value='';jNickInp.value=myNickName||'';
+    jRoomCodeLbl.textContent='ввод кода';
+    joinRoomModal.style.display='flex';
   };
 
-  function startRoomSession(code,asHost,asAdmin){
+  closeCreateRoomBtn.onclick=function(){createRoomModal.style.display='none';};
+  closeJoinRoomBtn.onclick=function(){joinRoomModal.style.display='none';};
+
+  submitCreateRoomBtn.onclick=function(){
+    var n=(rNickInp.value||'').trim();
+    if(!n){flash('Введите никнейм');return;}
+    myNickName=n;
+    if(window.localStorage)window.localStorage.setItem('etg_kdk_nick',myNickName);
+    roomExpectedPass=(rPassInp.value||'').trim();
+    createRoomModal.style.display='none';
+    var generatedCode='KDK'+Math.floor(1000+Math.random()*9000);
+    startRoomSession(generatedCode,true,true,'');
+  };
+
+  submitJoinRoomBtn.onclick=function(){
+    var c=(jCodeInp.value||'').trim().toUpperCase();
+    var n=(jNickInp.value||'').trim();
+    var p=(jPassInp.value||'').trim();
+    if(!c){flash('Введите код комнаты');return;}
+    if(!n){flash('Введите ваш никнейм');return;}
+    myNickName=n;
+    if(window.localStorage)window.localStorage.setItem('etg_kdk_nick',myNickName);
+    joinRoomModal.style.display='none';
+    startRoomSession(c,false,false,p);
+  };
+
+  function startRoomSession(code,asHost,asAdmin,enteredPass){
     activeRoomCode=code;isHost=Boolean(asHost);isAdmin=Boolean(asAdmin);
     roomUsers={};sessionAdmins={};
     roomUsers[myPeerId]={name:myNickName,isHost:isHost,isAdmin:isAdmin};
     roomBtnLbl.textContent='Смотрят (1)';roomBtn.classList.add('room-active');
-    flash('Комната '+activeRoomCode+' создана');
-    connectRoomMqtt();
+    flash(isHost?'Комната '+activeRoomCode+' создана':'Подключение к '+activeRoomCode+'...');
+    connectRoomMqtt(enteredPass||'');
   }
 
-  function connectRoomMqtt(){
+  function connectRoomMqtt(enteredPass){
     if(mqttClient){try{mqttClient.disconnect();}catch(e){}mqttClient=null;}
     mqttClient=new Paho.MQTT.Client('broker.hivemq.com',8884,'/mqtt',myPeerId);
-    mqttClient.onConnectionLost=function(){if(activeRoomCode)setTimeout(connectRoomMqtt,3000);};
+    mqttClient.onConnectionLost=function(){if(activeRoomCode)setTimeout(function(){connectRoomMqtt(enteredPass);},3000);};
     mqttClient.onMessageArrived=function(msg){
       try{
         var data=JSON.parse(msg.payloadString);
@@ -377,7 +443,7 @@ body.locked .top-bar,body.locked .center-ctrls,body.locked .bottom-bar{display:n
       onSuccess:function(){
         var topic='etg_kdk/v2/'+activeRoomCode;
         mqttClient.subscribe(topic);
-        sendMqttPacket({type:'join',sender:myPeerId,name:myNickName,isHost:isHost,isAdmin:isAdmin});
+        sendMqttPacket({type:'join',sender:myPeerId,name:myNickName,isHost:isHost,isAdmin:isAdmin,pass:enteredPass||''});
         if(heartbeatTimer)clearInterval(heartbeatTimer);
         heartbeatTimer=setInterval(function(){
           if(activeRoomCode&&isHost)broadcastRoomState();
@@ -402,16 +468,51 @@ body.locked .top-bar,body.locked .center-ctrls,body.locked .bottom-bar{display:n
 
   function handleMqttPacket(d){
     if(!d||d.sender===myPeerId)return;
-    if(d.type==='join'||d.type==='heartbeat'||d.type==='sync'){
+    if(d.type==='join'){
+      if(isHost){
+        if(roomExpectedPass&&d.pass!==roomExpectedPass){
+          sendMqttPacket({type:'kick',target:d.sender,reason:'Неверный пароль комнаты'});
+          return;
+        }
+        roomUsers[d.sender]={name:d.name||'Зритель',isHost:false,isAdmin:Boolean(sessionAdmins[d.sender])};
+        sendMqttPacket({
+          type:'welcome',target:d.sender,hostId:myPeerId,users:roomUsers,
+          link:curUrl,time:vid.currentTime||0,paused:Boolean(vid.paused),speed:rate
+        });
+        sendMqttPacket({type:'roster',users:roomUsers});
+        updateViewerCount();
+      }
+    }else if(d.type==='welcome'){
+      if(d.target===myPeerId){
+        if(d.users&&typeof d.users==='object'){
+          roomUsers=d.users;
+          roomUsers[myPeerId]={name:myNickName,isHost:false,isAdmin:isAdmin};
+          updateViewerCount();
+        }
+        if(d.link)mountVideo(d.link,d.time||0);
+        else syncFromHost(d);
+        flash('Вы вошли в комнату');
+      }
+    }else if(d.type==='roster'){
+      if(d.users&&typeof d.users==='object'){
+        roomUsers=d.users;
+        roomUsers[myPeerId]={name:myNickName,isHost:isHost,isAdmin:isAdmin};
+        updateViewerCount();
+      }
+    }else if(d.type==='sync'){
       var targetIsAdmin=Boolean(d.isAdmin)||Boolean(sessionAdmins[d.sender]);
       roomUsers[d.sender]={name:d.name||'Зритель',isHost:Boolean(d.isHost),isAdmin:targetIsAdmin};
       updateViewerCount();
-      if(d.type==='sync'&&!isHost){
+      if(!isHost){
         if(d.link&&d.link!==curUrl)mountVideo(d.link,d.time||0);
         else syncFromHost(d);
       }
     }else if(d.type==='kick'&&d.target===myPeerId){
-      flash('Вы были исключены из комнаты');leaveRoom();
+      flash(d.reason||'Вы были исключены из комнаты');leaveRoom();
+    }else if(d.type==='leave'){
+      delete roomUsers[d.sender];
+      delete sessionAdmins[d.sender];
+      updateViewerCount();
     }else if(d.type==='admin_role'){
       sessionAdmins[d.target]=Boolean(d.state);
       if(roomUsers[d.target])roomUsers[d.target].isAdmin=Boolean(d.state);
@@ -456,8 +557,10 @@ body.locked .top-bar,body.locked .center-ctrls,body.locked .bottom-bar{display:n
         var kickBtn=document.createElement('button');kickBtn.className='pill-btn';
         kickBtn.textContent='✕';kickBtn.style.color='#fca5a5';
         kickBtn.onclick=function(e){
-          e.stopPropagation();sendMqttPacket({type:'kick',target:pId});
-          delete roomUsers[pId];updateViewerCount();
+          e.stopPropagation();sendMqttPacket({type:'kick',target:pId,reason:'Исключен создателем'});
+          delete roomUsers[pId];delete sessionAdmins[pId];
+          sendMqttPacket({type:'roster',users:roomUsers});
+          updateViewerCount();
         };
         actBox.appendChild(admBtn);actBox.appendChild(kickBtn);row.appendChild(actBox);
       }
@@ -473,18 +576,25 @@ body.locked .top-bar,body.locked .center-ctrls,body.locked .bottom-bar{display:n
   };
 
   function leaveRoom(){
+    if(activeRoomCode){
+      sendMqttPacket({type:'leave',sender:myPeerId});
+    }
     if(heartbeatTimer){clearInterval(heartbeatTimer);heartbeatTimer=null;}
     if(mqttClient){try{mqttClient.disconnect();}catch(e){}mqttClient=null;}
-    activeRoomCode=null;isHost=false;isAdmin=false;roomUsers={};sessionAdmins={};
+    activeRoomCode=null;isHost=false;isAdmin=false;roomUsers={};sessionAdmins={};roomExpectedPass='';
     roomBtn.classList.remove('room-active');roomBtnLbl.textContent='+ Комната';
     viewersModal.style.display='none';flash('Вы вышли из комнаты');
   }
 
   leaveRoomBtn.onclick=function(){leaveRoom();};
 
-  if(targetRoom){
-    myNickName='Гость_'+Math.floor(100+Math.random()*900);
-    startRoomSession(targetRoom.toUpperCase(),false,false);
+  closeViewersBtn.onclick=function(){viewersModal.style.display='none';};
+
+  if(targetRoomCode){
+    jCodeInp.value=targetRoomCode;
+    jRoomCodeLbl.textContent=targetRoomCode;
+    jNickInp.value=myNickName||'';
+    joinRoomModal.style.display='flex';
   }
 })();
 </script>
