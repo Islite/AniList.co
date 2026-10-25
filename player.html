@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>Kodik Player & Watch Party</title>
 <style>
-:root{--sheet-bg:rgba(24,24,27,0.95);--panel-bg:rgba(28,28,30,0.92);--text-main:#ffffff;--text-sub:#a1a1aa;--tile-bg:rgba(255,255,255,0.22);--accent-green:#10b981;--accent-red:#ef4444;--accent-blue:#3b82f6}
+:root{--sheet-bg:rgba(24,24,27,0.96);--panel-bg:rgba(28,28,30,0.92);--text-main:#ffffff;--text-sub:#a1a1aa;--tile-bg:rgba(255,255,255,0.22);--accent-green:#10b981;--accent-red:#ef4444;--accent-blue:#3b82f6}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;padding:0;width:100%;height:100%;background:#000;color:var(--text-main);overflow:hidden;font-family:system-ui,-apple-system,sans-serif;user-select:none}
 .app{position:relative;display:flex;flex-direction:column;width:100%;height:100%;background:#000}
 .stage{position:relative;flex:1;min-height:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#000;overflow:hidden}
-video,iframe{width:100%;height:100%;max-width:100%;max-height:100%;object-fit:contain;background:#000;border:0;outline:none}
+video,iframe{position:absolute;inset:0;width:100%;height:100%;max-width:100%;max-height:100%;object-fit:contain;background:#000;border:0;outline:none}
 .top-bar{position:absolute;top:0;left:0;right:0;display:flex;flex-direction:column;padding:calc(10px + env(safe-area-inset-top, 0px)) 14px 10px;background:linear-gradient(180deg,rgba(0,0,0,0.95) 0%,rgba(0,0,0,0.65) 75%,transparent 100%);z-index:30;transition:opacity .25s ease}
 .top-row{display:flex;align-items:center;justify-content:space-between;width:100%;gap:8px}
 .top-left{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
@@ -86,7 +86,6 @@ video,iframe{width:100%;height:100%;max-width:100%;max-height:100%;object-fit:co
 .btn-kick{background:rgba(239,68,68,0.3);color:#fca5a5}
 body.hud-off .top-bar,body.hud-off .center-ctrls,body.hud-off .bottom-bar{opacity:0;pointer-events:none}
 body.locked .top-bar,body.locked .center-ctrls,body.locked .bottom-bar{display:none!important}
-body.mode-iframe .center-ctrls,body.mode-iframe .bottom-bar{display:none!important}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.17/hls.light.min.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
@@ -264,13 +263,13 @@ body.mode-iframe .center-ctrls,body.mode-iframe .bottom-bar{display:none!importa
   var sourceModal=document.getElementById('sourceModal'),closeSourceBtn=document.getElementById('closeSourceBtn'),sourceUrlInput=document.getElementById('sourceUrlInput'),sourceTitleInput=document.getElementById('sourceTitleInput'),loadSourceSubmitBtn=document.getElementById('loadSourceSubmitBtn');
 
   var qParams=new URLSearchParams(window.location.search);
-  var sid=qParams.get('sid')||'';
   var initialRoomId=qParams.get('room')||'';
   var initialSrc=qParams.get('src')||qParams.get('url')||'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8';
   var initialTitle=qParams.get('title')||'Демо Поток';
 
   var hls=null,ctxData=null,vIdx=0,eIdx=0,streams={},curQ='720',rate=1.0,activeIframe=null;
   var isLocked=false,isFs=false,hudTimer=null,bTimer=null,unlockTimer=null,reqSeq=0,draggingSeek=false;
+  var iframeCurTime=0,iframeDuration=0,iframePaused=true;
   var SPEEDS=[0.25,0.5,0.75,1.0,1.25,1.5,1.75,2.0,2.25,2.5,2.75,3.0,3.25,3.5,3.75,4.0];
 
   var roomState={
@@ -281,24 +280,36 @@ body.mode-iframe .center-ctrls,body.mode-iframe .bottom-bar{display:none!importa
     roomPass:'',
     myId:'',
     myNick:'',
-    peer:null,
-    hostConn:null,
-    connections:{},
+    ws:null,
     users:[],
-    bcastChannel:null,
     ignoreNextSync:false
   };
 
   function fmtRate(v){var n=parseFloat(v)||1;return (n%1===0?n.toFixed(0):n.toFixed(2).replace(/0+$/,''))+'x';}
   function fmtTime(sec){if(!sec||isNaN(sec)||sec<0)return '00:00';var t=Math.floor(sec),h=Math.floor(t/3600),m=Math.floor((t%3600)/60),s=t%60;var mm=m<10?'0'+m:String(m),ss=s<10?'0'+s:String(s);return h>0?(h+':'+mm+':'+ss):(mm+':'+ss);}
 
+  function getCurrentVideoTime(){
+    if(activeIframe)return iframeCurTime||0;
+    return vid.currentTime||0;
+  }
+
+  function getVideoDuration(){
+    if(activeIframe)return iframeDuration||0;
+    return vid.duration||0;
+  }
+
+  function isVideoPaused(){
+    if(activeIframe)return iframePaused;
+    return Boolean(vid.paused);
+  }
+
   function updateTimelineProgress(){
-    var cur=vid.currentTime||0,dur=vid.duration||0;
+    var cur=getCurrentVideoTime(),dur=getVideoDuration();
     if(dur>0){
       var progPct=Math.max(0,Math.min(100,(cur/dur)*100));
       timelinePlayed.style.width=progPct.toFixed(2)+'%';
       var maxBuf=0;
-      if(vid.buffered&&vid.buffered.length>0){
+      if(!activeIframe&&vid.buffered&&vid.buffered.length>0){
         for(var i=0;i<vid.buffered.length;i++){
           var bStart=vid.buffered.start(i);
           var bEnd=vid.buffered.end(i);
@@ -309,6 +320,8 @@ body.mode-iframe .center-ctrls,body.mode-iframe .bottom-bar{display:none!importa
             if(vid.buffered.end(j)>maxBuf){maxBuf=vid.buffered.end(j);}
           }
         }
+      }else if(activeIframe){
+        maxBuf=cur;
       }
       var bufPct=Math.max(progPct,Math.min(100,(maxBuf/dur)*100));
       timelineBuffer.style.width=bufPct.toFixed(2)+'%';
@@ -331,8 +344,8 @@ body.mode-iframe .center-ctrls,body.mode-iframe .bottom-bar{display:none!importa
     if(isLocked)return;
     document.body.classList.remove('hud-off');
     if(hudTimer)clearTimeout(hudTimer);
-    if(!vid.paused&&!activeIframe){
-      hudTimer=setTimeout(function(){if(!vid.paused){document.body.classList.add('hud-off');speedDrop.style.display='none';qualityDrop.style.display='none';}},3400);
+    if(!isVideoPaused()){
+      hudTimer=setTimeout(function(){if(!isVideoPaused()){document.body.classList.add('hud-off');speedDrop.style.display='none';qualityDrop.style.display='none';}},3400);
     }
   }
 
@@ -351,7 +364,7 @@ body.mode-iframe .center-ctrls,body.mode-iframe .bottom-bar{display:none!importa
     rate=n;applyRateToVideo();speedLbl.textContent=fmtRate(rate);flash(fmtRate(rate));
     try{localStorage.setItem('kodik_rate',String(rate));}catch(e){}
     if(broadcastSync&&roomState.active&&(roomState.isHost||roomState.isAdmin)){
-      sendRoomPacket({type:'RATE',rate:rate});
+      sendRoomAction('RATE',{rate:rate});
     }
   }
 
@@ -368,7 +381,7 @@ body.mode-iframe .center-ctrls,body.mode-iframe .bottom-bar{display:none!importa
     qualityDrop.innerHTML='';
     qs.forEach(function(q){
       var b=document.createElement('button');b.className='drop-item'+(q===curQ?' active':'');b.textContent=q+'p';
-      b.onclick=function(e){e.stopPropagation();if(streams[q]&&q!==curQ){var t=vid.currentTime||0;curQ=q;qualityLbl.textContent=q+'p';mountStream(streams[q],t);}qualityDrop.style.display='none';wakeHud();};
+      b.onclick=function(e){e.stopPropagation();if(streams[q]&&q!==curQ){var t=getCurrentVideoTime();curQ=q;qualityLbl.textContent=q+'p';mountStream(streams[q],t);}qualityDrop.style.display='none';wakeHud();};
       qualityDrop.appendChild(b);
     });
   }
@@ -385,10 +398,36 @@ body.mode-iframe .center-ctrls,body.mode-iframe .bottom-bar{display:none!importa
   lockBtn.onclick=function(e){e.stopPropagation();toggleLock();};
   unlockBtn.onclick=function(e){e.stopPropagation();toggleLock();};
 
+  function sendIframeKodikCmd(action,val){
+    if(activeIframe&&activeIframe.contentWindow){
+      var payload={key:'kodik_player_api',value:{action:action}};
+      if(val!==undefined)payload.value.time=val;
+      activeIframe.contentWindow.postMessage(payload,'*');
+    }
+  }
+
   function togglePlay(userTriggered){
-    if(activeIframe)return;
     if(userTriggered&&roomState.active&&!roomState.isHost&&!roomState.isAdmin){
       flash('Только хост или админ управляет просмотром');
+      return;
+    }
+    if(activeIframe){
+      if(iframePaused){
+        sendIframeKodikCmd('play');
+        iframePaused=false;
+        playIcon.innerHTML='<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
+        if(userTriggered&&roomState.active&&(roomState.isHost||roomState.isAdmin)){
+          sendRoomAction('PLAY',{time:iframeCurTime});
+        }
+      }else{
+        sendIframeKodikCmd('pause');
+        iframePaused=true;
+        playIcon.innerHTML='<path d="M8 5v14l11-7z"/>';
+        if(userTriggered&&roomState.active&&(roomState.isHost||roomState.isAdmin)){
+          sendRoomAction('PAUSE',{time:iframeCurTime});
+        }
+      }
+      wakeHud();
       return;
     }
     if(vid.paused){
@@ -405,10 +444,21 @@ body.mode-iframe .center-ctrls,body.mode-iframe .bottom-bar{display:none!importa
       flash('Только хост или админ управляет просмотром');
       return;
     }
-    var dur=vid.duration||0;var tgt=Math.min(dur,Math.max(0,(vid.currentTime||0)+sec));
-    vid.currentTime=tgt;flash((sec>0?'+':'')+Math.round(sec)+'с');wakeHud();
+    var cur=getCurrentVideoTime();
+    var dur=getVideoDuration();
+    var tgt=Math.max(0,dur>0?Math.min(dur,cur+sec):cur+sec);
+    if(activeIframe){
+      sendIframeKodikCmd('seek',tgt);
+      iframeCurTime=tgt;
+      flash((sec>0?'+':'')+Math.round(sec)+'с');
+      wakeHud();
+    }else{
+      vid.currentTime=tgt;
+      flash((sec>0?'+':'')+Math.round(sec)+'с');
+      wakeHud();
+    }
     if(roomState.active&&(roomState.isHost||roomState.isAdmin)){
-      sendRoomPacket({type:'SEEK',time:tgt});
+      sendRoomAction('SEEK',{time:tgt});
     }
   }
 
@@ -420,7 +470,7 @@ body.mode-iframe .center-ctrls,body.mode-iframe .bottom-bar{display:none!importa
     if(eIdx>0){
       eIdx-=1;loadCurrent(0);wakeHud();
       if(roomState.active&&(roomState.isHost||roomState.isAdmin)){
-        sendRoomPacket({type:'CHANGE_EP',eIdx:eIdx,vIdx:vIdx});
+        sendRoomAction('CHANGE_EP',{eIdx:eIdx,vIdx:vIdx});
       }
     }
   }
@@ -434,7 +484,7 @@ body.mode-iframe .center-ctrls,body.mode-iframe .bottom-bar{display:none!importa
     if(eIdx+1<eps.length){
       eIdx+=1;loadCurrent(0);wakeHud();
       if(roomState.active&&(roomState.isHost||roomState.isAdmin)){
-        sendRoomPacket({type:'CHANGE_EP',eIdx:eIdx,vIdx:vIdx});
+        sendRoomAction('CHANGE_EP',{eIdx:eIdx,vIdx:vIdx});
       }
     }
   }
@@ -478,7 +528,7 @@ body.mode-iframe .center-ctrls,body.mode-iframe .bottom-bar{display:none!importa
         if(i!==eIdx){
           eIdx=i;epModal.style.display='none';loadCurrent(0);wakeHud();
           if(roomState.active&&(roomState.isHost||roomState.isAdmin)){
-            sendRoomPacket({type:'CHANGE_EP',eIdx:eIdx,vIdx:vIdx});
+            sendRoomAction('CHANGE_EP',{eIdx:eIdx,vIdx:vIdx});
           }
         }else{epModal.style.display='none';}
       };
@@ -501,14 +551,14 @@ body.mode-iframe .center-ctrls,body.mode-iframe .bottom-bar{display:none!importa
         }
         if(i===vIdx){voiceModal.style.display='none';return;}
         var oldEp=(ctxData.variants[vIdx]&&ctxData.variants[vIdx].episodes&&ctxData.variants[vIdx].episodes[eIdx])||null;
-        var savedSec=vid&&!isNaN(vid.currentTime)?vid.currentTime:0;
+        var savedSec=getCurrentVideoTime();
         vIdx=i;voiceModal.style.display='none';
         var newEps=(ctxData.variants[vIdx]&&ctxData.variants[vIdx].episodes)||[];
         var found=-1;
         if(oldEp){for(var k=0;k<newEps.length;k++){if(newEps[k].e===oldEp.e){found=k;break;}}}
         eIdx=found>=0?found:0;loadCurrent(found>=0?savedSec:0);wakeHud();
         if(roomState.active&&(roomState.isHost||roomState.isAdmin)){
-          sendRoomPacket({type:'CHANGE_EP',eIdx:eIdx,vIdx:vIdx});
+          sendRoomAction('CHANGE_EP',{eIdx:eIdx,vIdx:vIdx});
         }
       };
       voiceList.appendChild(b);
@@ -555,7 +605,6 @@ body.mode-iframe .center-ctrls,body.mode-iframe .bottom-bar{display:none!importa
     sourceModal.style.display='none';
     titleLbl.textContent=t;
     initialSrc=url;
-    initialTitle=t;
     ctxData={
       title:t,
       variants:[{
@@ -564,17 +613,9 @@ body.mode-iframe .center-ctrls,body.mode-iframe .bottom-bar{display:none!importa
       }]
     };
     vIdx=0;eIdx=0;
-    if(url.indexOf('.m3u8')!==-1||url.indexOf('.mp4')!==-1){
-      streams={'720':url};
-      curQ='720';
-      qualityLbl.textContent='720p';
-      buildQualityDrop(['720']);
-      mountStream(url,0);
-    }else{
-      mountIframe(url);
-    }
+    loadCurrent(0);
     if(roomState.active&&(roomState.isHost||roomState.isAdmin)){
-      sendRoomPacket({type:'LOAD_MEDIA',src:url,title:t});
+      sendRoomAction('LOAD_MEDIA',{src:url,title:t});
     }
   };
 
@@ -589,7 +630,6 @@ body.mode-iframe .center-ctrls,body.mode-iframe .bottom-bar{display:none!importa
   }
 
   function mountStream(url,resumeAt){
-    document.body.classList.remove('mode-iframe');
     if(activeIframe){try{activeIframe.remove();}catch(e){}activeIframe=null;}
     vid.style.display='block';
     if(hls){try{hls.destroy();}catch(e){}hls=null;}
@@ -614,7 +654,6 @@ body.mode-iframe .center-ctrls,body.mode-iframe .bottom-bar{display:none!importa
   }
 
   function mountIframe(embedUrl){
-    document.body.classList.add('mode-iframe');
     if(hls){try{hls.destroy();}catch(e){}hls=null;}
     try{vid.pause();vid.removeAttribute('src');vid.load();}catch(e){}
     vid.style.display='none';
@@ -622,10 +661,48 @@ body.mode-iframe .center-ctrls,body.mode-iframe .bottom-bar{display:none!importa
       activeIframe=document.createElement('iframe');
       activeIframe.setAttribute('allowfullscreen','true');
       activeIframe.setAttribute('allow','autoplay; fullscreen');
+      activeIframe.style.position='absolute';
+      activeIframe.style.inset='0';
+      activeIframe.style.width='100%';
+      activeIframe.style.height='100%';
+      activeIframe.style.zIndex='1';
       stage.insertBefore(activeIframe,stage.firstChild);
     }
-    activeIframe.src=embedUrl;msg('',false);wakeHud();
+    var sep=embedUrl.indexOf('?')!==-1?'&':'?';
+    activeIframe.src=embedUrl+sep+'autoplay=true';
+    msg('',false);wakeHud();
   }
+
+  window.addEventListener('message',function(event){
+    if(event.data&&event.data.key==='kodik_player_api'){
+      var val=event.data.value||{};
+      if(val.action==='time_update'){
+        iframeCurTime=val.time||0;
+        iframeDuration=val.duration||0;
+        timeLbl.textContent=fmtTime(iframeCurTime)+' / '+fmtTime(iframeDuration);
+        if(!draggingSeek&&iframeDuration>0){
+          seek.value=String(Math.round((iframeCurTime/iframeDuration)*1000));
+        }
+        updateTimelineProgress();
+      }else if(val.action==='play'){
+        iframePaused=false;
+        playIcon.innerHTML='<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
+        if(roomState.active&&(roomState.isHost||roomState.isAdmin)&&!roomState.ignoreNextSync){
+          sendRoomAction('PLAY',{time:iframeCurTime});
+        }
+        roomState.ignoreNextSync=false;
+      }else if(val.action==='pause'){
+        iframePaused=true;
+        playIcon.innerHTML='<path d="M8 5v14l11-7z"/>';
+        if(roomState.active&&(roomState.isHost||roomState.isAdmin)&&!roomState.ignoreNextSync){
+          sendRoomAction('PAUSE',{time:iframeCurTime});
+        }
+        roomState.ignoreNextSync=false;
+      }else if(val.action==='ended'){
+        goToNextEp(false);
+      }
+    }
+  });
 
   function loadCurrent(resumeAt){
     var eps=((ctxData&&ctxData.variants&&ctxData.variants[vIdx]&&ctxData.variants[vIdx].episodes)||[]);
@@ -648,16 +725,14 @@ body.mode-iframe .center-ctrls,body.mode-iframe .bottom-bar{display:none!importa
 
     fetch('/api/stream?link='+encodeURIComponent(ep.link)).then(function(r){return r.json();}).then(function(d){
       if(mySeq!==reqSeq)return;
-      if(!d||!d.ok){
-        if(d&&d.iframe)return mountIframe(d.iframe);
-        return mountIframe(ep.link);
-      }
-      streams=d.streams||{};var qs=d.qualities||Object.keys(streams);
-      if(!streams[curQ])curQ=streams['720']?'720':(qs[qs.length-1]||'');
-      if(curQ&&streams[curQ]){
-        qualityLbl.textContent=curQ+'p';buildQualityDrop(qs.slice());
+      if(d&&d.ok&&d.streams&&Object.keys(d.streams).length>0){
+        streams=d.streams;
+        var qs=d.qualities||Object.keys(streams);
+        if(!streams[curQ])curQ=streams['720']?'720':(qs[qs.length-1]||'');
+        qualityLbl.textContent=curQ+'p';
+        buildQualityDrop(qs.slice());
         mountStream(streams[curQ],resumeAt||0);
-      }else if(d.iframe){
+      }else if(d&&d.iframe){
         mountIframe(d.iframe);
       }else{
         mountIframe(ep.link);
@@ -683,7 +758,7 @@ body.mode-iframe .center-ctrls,body.mode-iframe .bottom-bar{display:none!importa
   seek.addEventListener('input',function(){
     if(roomState.active&&!roomState.isHost&&!roomState.isAdmin)return;
     draggingSeek=true;
-    var dur=vid.duration||0;
+    var dur=getVideoDuration();
     if(dur>0){
       var pos=(parseFloat(seek.value)/1000)*dur;
       timelinePlayed.style.width=((pos/dur)*100).toFixed(2)+'%';
@@ -696,12 +771,17 @@ body.mode-iframe .center-ctrls,body.mode-iframe .bottom-bar{display:none!importa
       flash('Только хост или админ перематывает');
       return;
     }
-    var dur=vid.duration||0;
+    var dur=getVideoDuration();
     if(dur>0){
       var targetPos=(parseFloat(seek.value)/1000)*dur;
-      vid.currentTime=targetPos;
+      if(activeIframe){
+        sendIframeKodikCmd('seek',targetPos);
+        iframeCurTime=targetPos;
+      }else{
+        vid.currentTime=targetPos;
+      }
       if(roomState.active&&(roomState.isHost||roomState.isAdmin)){
-        sendRoomPacket({type:'SEEK',time:targetPos});
+        sendRoomAction('SEEK',{time:targetPos});
       }
     }
     draggingSeek=false;
@@ -714,7 +794,7 @@ body.mode-iframe .center-ctrls,body.mode-iframe .bottom-bar{display:none!importa
     applyRateToVideo();
     wakeHud();
     if(roomState.active&&(roomState.isHost||roomState.isAdmin)&&!roomState.ignoreNextSync){
-      sendRoomPacket({type:'PLAY',time:vid.currentTime||0});
+      sendRoomAction('PLAY',{time:vid.currentTime||0});
     }
     roomState.ignoreNextSync=false;
   });
@@ -723,7 +803,7 @@ body.mode-iframe .center-ctrls,body.mode-iframe .bottom-bar{display:none!importa
     playIcon.innerHTML='<path d="M8 5v14l11-7z"/>';
     document.body.classList.remove('hud-off');
     if(roomState.active&&(roomState.isHost||roomState.isAdmin)&&!roomState.ignoreNextSync){
-      sendRoomPacket({type:'PAUSE',time:vid.currentTime||0});
+      sendRoomAction('PAUSE',{time:vid.currentTime||0});
     }
     roomState.ignoreNextSync=false;
   });
@@ -788,117 +868,108 @@ body.mode-iframe .center-ctrls,body.mode-iframe .bottom-bar{display:none!importa
     });
   }
 
-  function sendRoomPacket(pkt){
-    pkt.senderId=roomState.myId;
-    pkt.senderNick=roomState.myNick;
-    if(roomState.bcastChannel){
-      try{roomState.bcastChannel.postMessage(pkt);}catch(e){}
-    }
-    if(roomState.isHost){
-      Object.keys(roomState.connections).forEach(function(k){
-        var conn=roomState.connections[k];
-        if(conn&&conn.open){try{conn.send(pkt);}catch(e){}}
-      });
-    }else if(roomState.hostConn&&roomState.hostConn.open){
-      try{roomState.hostConn.send(pkt);}catch(e){}
+  function getWsUrl(){
+    var loc=window.location;
+    var proto=loc.protocol==='https:'?'wss:':'ws:';
+    return proto+'//'+loc.host+'/ws';
+  }
+
+  function sendRoomAction(action,data){
+    if(roomState.ws&&roomState.ws.readyState===WebSocket.OPEN){
+      var pkt=Object.assign({type:'SYNC_ACTION',action:action},data);
+      roomState.ws.send(JSON.stringify(pkt));
     }
   }
 
-  function handleRoomPacket(pkt){
-    if(!pkt||pkt.senderId===roomState.myId)return;
-    if(pkt.type==='JOIN_REQUEST'){
-      if(!roomState.isHost)return;
-      if(roomState.roomPass&&pkt.pass!==roomState.roomPass){
-        var badConn=roomState.connections[pkt.peerId];
-        if(badConn){badConn.send({type:'JOIN_REJECT',reason:'Неверный пароль комнаты'});setTimeout(function(){badConn.close();},300);}
-        return;
-      }
-      var existing=roomState.users.find(function(x){return x.id===pkt.peerId;});
-      if(!existing){
-        roomState.users.push({id:pkt.peerId,name:pkt.name||'Зритель',role:'viewer'});
-      }
-      updateRoomButtonUI();
-      renderRoomUsers();
-      var acceptConn=roomState.connections[pkt.peerId];
-      if(acceptConn&&acceptConn.open){
-        acceptConn.send({
-          type:'JOIN_ACCEPT',
-          roomId:roomState.roomId,
-          users:roomState.users,
-          state:{
-            time:vid.currentTime||0,
-            paused:Boolean(vid.paused),
-            rate:rate,
-            src:initialSrc,
-            title:titleLbl.textContent,
-            vIdx:vIdx,
-            eIdx:eIdx
-          }
-        });
-      }
-      sendRoomPacket({type:'SYNC_USERS',users:roomState.users});
-      flash('Вошёл: '+(pkt.name||'Зритель'));
-      return;
-    }
-
-    if(pkt.type==='JOIN_ACCEPT'){
+  function handleServerPacket(pkt){
+    if(!pkt)return;
+    if(pkt.type==='ROOM_CREATED'||pkt.type==='JOIN_SUCCESS'){
       roomState.active=true;
+      roomState.roomId=pkt.roomId;
+      roomState.myId=pkt.userId;
+      roomState.isHost=(pkt.role==='host');
+      roomState.isAdmin=(pkt.role==='host'||pkt.role==='admin');
       roomState.users=pkt.users||[];
-      var me=roomState.users.find(function(u){return u.id===roomState.myId;});
-      if(me){roomState.isAdmin=(me.role==='admin'||me.role==='host');}
       updateRoomButtonUI();
       renderRoomUsers();
-      flash('Подключено к комнате!');
+      flash(roomState.isHost?'Сервер комнаты запущен: '+pkt.roomId:'Подключено к комнате!');
       if(pkt.state){
         if(pkt.state.title)titleLbl.textContent=pkt.state.title;
         if(pkt.state.rate)setRate(pkt.state.rate,false);
         if(pkt.state.src&&pkt.state.src!==initialSrc){
           initialSrc=pkt.state.src;
-          mountStream(initialSrc,pkt.state.time||0);
+          loadCurrent(pkt.state.time||0);
         }else if(pkt.state.time!==undefined){
-          vid.currentTime=pkt.state.time;
+          if(activeIframe){sendIframeKodikCmd('seek',pkt.state.time);}
+          else{vid.currentTime=pkt.state.time;}
         }
-        if(pkt.state.paused){vid.pause();}else{vid.play().catch(function(){});}
+        if(pkt.state.paused){
+          if(activeIframe){sendIframeKodikCmd('pause');iframePaused=true;playIcon.innerHTML='<path d="M8 5v14l11-7z"/>';}
+          else{vid.pause();}
+        }else{
+          if(activeIframe){sendIframeKodikCmd('play');iframePaused=false;playIcon.innerHTML='<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';}
+          else{vid.play().catch(function(){});}
+        }
       }
       return;
     }
 
-    if(pkt.type==='JOIN_REJECT'){
-      flash(pkt.reason||'Ошибка входа');
+    if(pkt.type==='JOIN_ERROR'){
+      alert(pkt.reason||'Ошибка подключения к комнате');
       leaveRoom();
       return;
     }
 
-    if(pkt.type==='SYNC_USERS'){
+    if(pkt.type==='USER_JOINED'||pkt.type==='USER_LEFT'||pkt.type==='USER_PROMOTED'||pkt.type==='USER_KICKED'){
       roomState.users=pkt.users||[];
       var selfUser=roomState.users.find(function(u){return u.id===roomState.myId;});
-      if(selfUser){roomState.isAdmin=(selfUser.role==='admin'||selfUser.role==='host');}
+      if(selfUser){
+        roomState.isHost=(selfUser.role==='host');
+        roomState.isAdmin=(selfUser.role==='admin'||selfUser.role==='host');
+      }
       updateRoomButtonUI();
       renderRoomUsers();
+      if(pkt.type==='USER_JOINED'&&pkt.user){flash('Вошёл: '+pkt.user.name);}
+      if(pkt.type==='USER_LEFT'){flash('Участник вышел');}
       return;
     }
 
     if(pkt.type==='PLAY'){
       roomState.ignoreNextSync=true;
-      if(pkt.time!==undefined&&Math.abs((vid.currentTime||0)-pkt.time)>1.5){
-        vid.currentTime=pkt.time;
+      if(activeIframe){
+        if(pkt.time!==undefined)sendIframeKodikCmd('seek',pkt.time);
+        sendIframeKodikCmd('play');
+        iframePaused=false;
+        playIcon.innerHTML='<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
+      }else{
+        if(pkt.time!==undefined&&Math.abs((vid.currentTime||0)-pkt.time)>1.5){
+          vid.currentTime=pkt.time;
+        }
+        vid.play().catch(function(){});
       }
-      vid.play().catch(function(){});
       flash('Воспроизведение (хост)');
       return;
     }
 
     if(pkt.type==='PAUSE'){
       roomState.ignoreNextSync=true;
-      if(pkt.time!==undefined)vid.currentTime=pkt.time;
-      vid.pause();
+      if(activeIframe){
+        if(pkt.time!==undefined)sendIframeKodikCmd('seek',pkt.time);
+        sendIframeKodikCmd('pause');
+        iframePaused=true;
+        playIcon.innerHTML='<path d="M8 5v14l11-7z"/>';
+      }else{
+        if(pkt.time!==undefined)vid.currentTime=pkt.time;
+        vid.pause();
+      }
       flash('Пауза (хост)');
       return;
     }
 
     if(pkt.type==='SEEK'){
       if(pkt.time!==undefined){
-        vid.currentTime=pkt.time;
+        if(activeIframe){sendIframeKodikCmd('seek',pkt.time);iframeCurTime=pkt.time;}
+        else{vid.currentTime=pkt.time;}
         flash('Перемотка: '+fmtTime(pkt.time));
       }
       return;
@@ -921,175 +992,132 @@ body.mode-iframe .center-ctrls,body.mode-iframe .bottom-bar{display:none!importa
       if(pkt.src){
         initialSrc=pkt.src;
         titleLbl.textContent=pkt.title||'Kodik Video';
-        mountStream(pkt.src,0);
+        ctxData={
+          title:titleLbl.textContent,
+          variants:[{label:'Основной поток',episodes:[{label:'1 серия',s:'1',e:'1',link:pkt.src}]}]
+        };
+        vIdx=0;eIdx=0;
+        loadCurrent(0);
         flash('Новое видео: '+titleLbl.textContent);
       }
       return;
     }
 
-    if(pkt.type==='PROMOTE'){
-      if(pkt.targetId===roomState.myId){
-        roomState.isAdmin=true;
-        flash('Вы назначены администратором комнаты');
+    if(pkt.type==='HEARTBEAT'){
+      if(!roomState.isHost&&pkt.time!==undefined){
+        var curT=getCurrentVideoTime();
+        if(Math.abs(curT-pkt.time)>1.8){
+          if(activeIframe){sendIframeKodikCmd('seek',pkt.time);}
+          else{vid.currentTime=pkt.time;}
+        }
+        if(pkt.paused!==undefined&&pkt.paused!==isVideoPaused()){
+          if(pkt.paused){
+            if(activeIframe){sendIframeKodikCmd('pause');iframePaused=true;playIcon.innerHTML='<path d="M8 5v14l11-7z"/>';}
+            else{vid.pause();}
+          }else{
+            if(activeIframe){sendIframeKodikCmd('play');iframePaused=false;playIcon.innerHTML='<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';}
+            else{vid.play().catch(function(){});}
+          }
+        }
       }
       return;
     }
 
-    if(pkt.type==='KICK'){
-      if(pkt.targetId===roomState.myId){
-        leaveRoom();
-        flash('Вы были исключены из комнаты');
-      }
+    if(pkt.type==='KICKED'){
+      leaveRoom();
+      alert(pkt.reason||'Вы были исключены из комнаты');
       return;
     }
+  }
+
+  function connectToWebSocket(onOpenCallback){
+    if(roomState.ws){
+      try{roomState.ws.close();}catch(e){}
+      roomState.ws=null;
+    }
+    var ws=new WebSocket(getWsUrl());
+    roomState.ws=ws;
+    ws.onopen=function(){
+      if(onOpenCallback)onOpenCallback();
+    };
+    ws.onmessage=function(e){
+      try{handleServerPacket(JSON.parse(e.data));}catch(err){}
+    };
+    ws.onclose=function(){
+      if(roomState.active){
+        flash('Связь с сервером потеряна');
+        leaveRoom();
+      }
+    };
+    ws.onerror=function(){
+      flash('Ошибка соединения');
+    };
   }
 
   function initHostServer(nick,pass){
-    var genRoomId='room-'+Math.floor(100000+Math.random()*900000);
-    roomState.isHost=true;
-    roomState.isAdmin=true;
-    roomState.roomId=genRoomId;
-    roomState.roomPass=pass||'';
     roomState.myNick=nick;
-    roomState.myId='host-'+Math.random().toString(36).substr(2,7);
-    roomState.users=[{id:roomState.myId,name:nick,role:'host'}];
-
-    try{
-      roomState.bcastChannel=new BroadcastChannel('kp_room_'+genRoomId);
-      roomState.bcastChannel.onmessage=function(e){handleRoomPacket(e.data);};
-    }catch(e){}
-
-    if(window.Peer){
-      try{
-        var p=new window.Peer('kproom-'+genRoomId,{debug:0});
-        roomState.peer=p;
-        p.on('open',function(id){
-          roomState.active=true;
-          updateRoomButtonUI();
-          renderRoomUsers();
-          flash('Сервер запущен: '+genRoomId);
-        });
-        p.on('connection',function(conn){
-          conn.on('open',function(){
-            roomState.connections[conn.peer]=conn;
-          });
-          conn.on('data',function(data){
-            if(data&&data.type==='JOIN_REQUEST'){data.peerId=conn.peer;}
-            handleRoomPacket(data);
-          });
-          conn.on('close',function(){
-            delete roomState.connections[conn.peer];
-            roomState.users=roomState.users.filter(function(u){return u.id!==conn.peer;});
-            updateRoomButtonUI();
-            renderRoomUsers();
-            sendRoomPacket({type:'SYNC_USERS',users:roomState.users});
-          });
-        });
-        p.on('error',function(err){
-          roomState.active=true;
-          updateRoomButtonUI();
-          renderRoomUsers();
-        });
-      }catch(e){
-        roomState.active=true;
-        updateRoomButtonUI();
-        renderRoomUsers();
-      }
-    }else{
-      roomState.active=true;
-      updateRoomButtonUI();
-      renderRoomUsers();
-    }
-
-    setInterval(function(){
-      if(roomState.active&&roomState.isHost){
-        sendRoomPacket({
-          type:'HEARTBEAT_SYNC',
-          time:vid.currentTime||0,
-          paused:Boolean(vid.paused)
-        });
-      }
-    },4000);
+    roomState.roomPass=pass||'';
+    connectToWebSocket(function(){
+      roomState.ws.send(JSON.stringify({
+        type:'CREATE_ROOM',
+        name:nick,
+        pass:pass,
+        time:getCurrentVideoTime(),
+        paused:isVideoPaused(),
+        rate:rate,
+        src:initialSrc,
+        title:titleLbl.textContent,
+        vIdx:vIdx,
+        eIdx:eIdx
+      }));
+    });
   }
 
   function initClientConnection(targetRoomId,nick,pass){
-    roomState.isHost=false;
-    roomState.isAdmin=false;
-    roomState.roomId=targetRoomId;
-    roomState.roomPass=pass||'';
     roomState.myNick=nick;
-    roomState.myId='peer-'+Math.random().toString(36).substr(2,7);
-
-    try{
-      roomState.bcastChannel=new BroadcastChannel('kp_room_'+targetRoomId);
-      roomState.bcastChannel.onmessage=function(e){handleRoomPacket(e.data);};
-    }catch(e){}
-
-    if(window.Peer){
-      try{
-        var p=new window.Peer({debug:0});
-        roomState.peer=p;
-        p.on('open',function(myPeerId){
-          roomState.myId=myPeerId;
-          var conn=p.connect('kproom-'+targetRoomId);
-          roomState.hostConn=conn;
-          conn.on('open',function(){
-            conn.send({type:'JOIN_REQUEST',name:nick,pass:pass,peerId:myPeerId});
-          });
-          conn.on('data',function(data){handleRoomPacket(data);});
-          conn.on('close',function(){
-            leaveRoom();
-            flash('Связь с комнатой потеряна');
-          });
-        });
-        p.on('error',function(err){
-          sendRoomPacket({type:'JOIN_REQUEST',name:nick,pass:pass,peerId:roomState.myId});
-        });
-      }catch(e){
-        sendRoomPacket({type:'JOIN_REQUEST',name:nick,pass:pass,peerId:roomState.myId});
-      }
-    }else{
-      sendRoomPacket({type:'JOIN_REQUEST',name:nick,pass:pass,peerId:roomState.myId});
-    }
+    roomState.roomPass=pass||'';
+    connectToWebSocket(function(){
+      roomState.ws.send(JSON.stringify({
+        type:'JOIN_ROOM',
+        roomId:targetRoomId,
+        name:nick,
+        pass:pass
+      }));
+    });
   }
 
+  setInterval(function(){
+    if(roomState.active&&roomState.isHost){
+      sendRoomAction('HEARTBEAT',{
+        time:getCurrentVideoTime(),
+        paused:isVideoPaused()
+      });
+    }
+  },3000);
+
   function promoteUserToAdmin(userId){
-    var u=roomState.users.find(function(x){return x.id===userId;});
-    if(u){
-      u.role='admin';
-      sendRoomPacket({type:'PROMOTE',targetId:userId});
-      sendRoomPacket({type:'SYNC_USERS',users:roomState.users});
-      renderRoomUsers();
-      flash(u.name+' теперь админ');
+    if(roomState.ws&&roomState.ws.readyState===WebSocket.OPEN){
+      roomState.ws.send(JSON.stringify({type:'PROMOTE',targetId:userId}));
     }
   }
 
   function kickUserFromRoom(userId){
-    var u=roomState.users.find(function(x){return x.id===userId;});
-    sendRoomPacket({type:'KICK',targetId:userId});
-    roomState.users=roomState.users.filter(function(x){return x.id!==userId;});
-    if(roomState.connections[userId]){
-      try{roomState.connections[userId].close();}catch(e){}
-      delete roomState.connections[userId];
+    if(roomState.ws&&roomState.ws.readyState===WebSocket.OPEN){
+      roomState.ws.send(JSON.stringify({type:'KICK',targetId:userId}));
     }
-    sendRoomPacket({type:'SYNC_USERS',users:roomState.users});
-    updateRoomButtonUI();
-    renderRoomUsers();
-    if(u)flash('Пользователь '+u.name+' исключен');
   }
 
   function leaveRoom(){
     roomState.active=false;
     roomState.isHost=false;
     roomState.isAdmin=false;
-    if(roomState.peer){try{roomState.peer.destroy();}catch(e){}roomState.peer=null;}
-    if(roomState.bcastChannel){try{roomState.bcastChannel.close();}catch(e){}roomState.bcastChannel=null;}
-    roomState.connections={};
-    roomState.hostConn=null;
+    if(roomState.ws){
+      try{roomState.ws.close();}catch(e){}
+      roomState.ws=null;
+    }
     roomState.users=[];
     updateRoomButtonUI();
     manageRoomModal.style.display='none';
-    flash('Вы вышли из комнаты');
   }
 
   roomBtn.onclick=function(e){
