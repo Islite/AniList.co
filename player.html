@@ -2,69 +2,203 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-  <meta name="referrer" content="origin">
-  <title>Kodik Player</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <title>Kodik Watch Party</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.17/hls.light.min.js"></script>
   <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      background: black;
-      color: white;
-      overflow: hidden;
-      font-family: system-ui, -apple-system, sans-serif;
-    }
-    iframe {
-      border: 0;
-      width: 100%;
-      height: 100%;
-      display: block;
-    }
-    .msg {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 100%;
-      padding: 24px;
-      box-sizing: border-box;
-      text-align: center;
-      font-size: 15px;
-    }
+    :root{--bg:#09090b;--card:#18181b;--accent:#6366f1;--text:#fff;--sub:#94a3b8}
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    html,body{margin:0;padding:0;width:100%;height:100%;background:#000;color:var(--text);font-family:system-ui,sans-serif;overflow:hidden}
+    .wrap{position:relative;width:100%;height:100%;display:flex;flex-direction:column}
+    .stage{position:relative;flex:1;width:100%;height:100%;display:flex;align-items:center;justify-content:center}
+    video,iframe{width:100%;height:100%;object-fit:contain;background:#000;border:0}
+    .hud{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:space-between;pointer-events:none;transition:opacity .25s ease}
+    .hud.off{opacity:0}
+    .bar{pointer-events:auto;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;background:linear-gradient(180deg,rgba(0,0,0,0.85),transparent)}
+    .bar.bottom{background:linear-gradient(0deg,rgba(0,0,0,0.85),transparent)}
+    .badge{background:rgba(99,102,241,0.25);border:1px solid rgba(99,102,241,0.4);color:#a5b4fc;padding:4px 10px;border-radius:12px;font-size:12px;font-weight:700}
+    .btn{background:rgba(255,255,255,0.18);border:0;color:#fff;padding:8px 14px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer}
+    .btn-main{background:var(--accent)}
+    .modal-box{position:absolute;inset:0;z-index:50;background:rgba(0,0,0,0.85);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:16px}
+    .card{width:100%;max-width:360px;background:var(--card);border-radius:16px;padding:20px;border:1px solid rgba(255,255,255,0.1)}
+    .field{width:100%;background:#000;border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:10px;color:#fff;font-size:13px;margin:8px 0 14px;outline:none}
   </style>
 </head>
 <body>
+  <div class="wrap">
+    <div class="stage" id="stage">
+      <video id="vid" playsinline controls></video>
+      <div class="hud" id="hud">
+        <div class="bar">
+          <div class="badge">Комната: <span id="rLbl">...</span></div>
+          <button class="btn" id="uBtn">Зрители (<span id="uCount">1</span>)</button>
+        </div>
+        <div class="bar bottom">
+          <span style="font-size:12px;color:var(--sub)">Управление синхронизировано с хостом</span>
+          <button class="btn" id="syncBtn">Подтянуть таймкод</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-box" id="joinDlg">
+    <div class="card">
+      <h3 style="margin:0 0 8px">Вход в комнату</h3>
+      <div style="font-size:12px;color:var(--sub)">Введите ник для отображения в списке зрителей</div>
+      <form id="joinFrm">
+        <input type="text" id="nInp" class="field" placeholder="Ваш ник" required autofocus>
+        <input type="text" id="rInp" class="field" placeholder="Код комнаты" required>
+        <button type="submit" class="btn btn-main" style="width:100%;padding:11px">Присоединиться</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-box" id="uDlg" style="display:none">
+    <div class="card">
+      <h3 style="margin:0 0 12px">Список зрителей</h3>
+      <div id="uList" style="max-height:200px;overflow-y:auto;font-size:12px;margin-bottom:14px"></div>
+      <button class="btn" id="closeUBtn" style="width:100%">Закрыть</button>
+    </div>
+  </div>
+
   <script>
-    (function () {
-      var params = new URLSearchParams(window.location.search);
-      var raw = (params.get("src") || params.get("url") || "").trim();
-      if (raw.indexOf("//") === 0) {
-        raw = "https:" + raw;
+    (function(){
+      var q=new URLSearchParams(window.location.search);
+      var room=(q.get('room')||'KDK1000').toUpperCase();
+      var vid=document.getElementById('vid');
+      var hud=document.getElementById('hud');
+      var stage=document.getElementById('stage');
+      var rLbl=document.getElementById('rLbl');
+      var rInp=document.getElementById('rInp');
+      var nInp=document.getElementById('nInp');
+      var joinDlg=document.getElementById('joinDlg');
+      var uDlg=document.getElementById('uDlg');
+      var uList=document.getElementById('uList');
+      var uCount=document.getElementById('uCount');
+
+      rInp.value=room;
+      rLbl.textContent=room;
+
+      var client=null;
+      var myId='w_'+Math.random().toString(36).substring(2,8);
+      var myNick='';
+      var activeRoom=room;
+      var hls=null;
+      var curUrl='';
+      var users={};
+
+      stage.onclick=function(e){
+        if(e.target.closest('button')||e.target.closest('input'))return;
+        hud.classList.toggle('off');
+      };
+
+      document.getElementById('uBtn').onclick=function(){
+        renderUsers();
+        uDlg.style.display='flex';
+      };
+      document.getElementById('closeUBtn').onclick=function(){
+        uDlg.style.display='none';
+      };
+
+      function renderUsers(){
+        uList.innerHTML='';
+        var keys=Object.keys(users);
+        uCount.textContent=Math.max(1,keys.length);
+        keys.forEach(function(k){
+          var row=document.createElement('div');
+          row.style.padding='6px 0';
+          row.textContent=users[k].name+(users[k].isHost?' (Хост)':(users[k].isAdmin?' (Админ)':''));
+          uList.appendChild(row);
+        });
       }
-      var target = null;
-      try {
-        var parsed = new URL(raw);
-        if (parsed.protocol === "https:" || parsed.protocol === "http:") {
-          target = parsed.href;
+
+      document.getElementById('joinFrm').onsubmit=function(e){
+        e.preventDefault();
+        myNick=nInp.value.trim()||'Гость';
+        activeRoom=(rInp.value.trim()||'KDK1000').toUpperCase();
+        rLbl.textContent=activeRoom;
+        joinDlg.style.display='none';
+        initMqtt();
+      };
+
+      function initMqtt(){
+        client=new Paho.MQTT.Client('broker.hivemq.com',8884,'/mqtt',myId);
+        client.onConnectionLost=function(){setTimeout(initMqtt,3000);};
+        client.onMessageArrived=function(msg){
+          try{
+            var p=JSON.parse(msg.payloadString);
+            onPacket(p);
+          }catch(err){}
+        };
+        client.connect({
+          useSSL:true,
+          timeout:5,
+          onSuccess:function(){
+            var top='etg_kdk/v2/'+activeRoom;
+            client.subscribe(top);
+            sendPacket({type:'join',sender:myId,name:myNick,role:'viewer'});
+          }
+        });
+      }
+
+      function sendPacket(obj){
+        if(!client||!client.isConnected())return;
+        var m=new Paho.MQTT.Message(JSON.stringify(obj));
+        m.destinationName='etg_kdk/v2/'+activeRoom;
+        client.send(m);
+      }
+
+      function onPacket(d){
+        if(!d||d.sender===myId)return;
+        if(d.type==='join'||d.type==='heartbeat'||d.type==='sync'){
+          if(d.sender){
+            users[d.sender]={name:d.name||'Участник',isAdmin:Boolean(d.isAdmin),isHost:Boolean(d.isHost)};
+            renderUsers();
+          }
+          if(d.link&&d.link!==curUrl){
+            curUrl=d.link;
+            loadStream(curUrl,d.time||0);
+          }else if(typeof d.time==='number'){
+            syncTime(d.time,d.paused,d.speed);
+          }
+        }else if(d.type==='state'){
+          syncTime(d.time,d.paused,d.speed);
         }
-      } catch (e) {}
-
-      if (!target) {
-        var box = document.createElement("div");
-        box.className = "msg";
-        box.textContent = "Передайте ссылку плеера в параметре ?src=";
-        document.body.appendChild(box);
-        return;
       }
 
-      var frame = document.createElement("iframe");
-      frame.setAttribute("allowfullscreen", "true");
-      frame.setAttribute("webkitallowfullscreen", "true");
-      frame.setAttribute("mozallowfullscreen", "true");
-      frame.setAttribute("allow", "autoplay; fullscreen; picture-in-picture; encrypted-media");
-      frame.src = target;
-      document.body.appendChild(frame);
+      function syncTime(t,paused,spd){
+        if(typeof spd==='number'&&Math.abs(vid.playbackRate-spd)>0.05){
+          vid.playbackRate=spd;
+        }
+        var cur=vid.currentTime||0;
+        if(Math.abs(cur-t)>2.5){
+          vid.currentTime=t;
+        }
+        if(paused&&!vid.paused)vid.pause();
+        else if(!paused&&vid.paused)vid.play().catch(function(){});
+      }
+
+      function loadStream(url,startAt){
+        if(window.Hls&&window.Hls.isSupported()&&url.indexOf('.m3u8')!==-1){
+          if(hls)hls.destroy();
+          hls=new window.Hls();
+          hls.loadSource(url);
+          hls.attachMedia(vid);
+          hls.on(window.Hls.Events.MANIFEST_PARSED,function(){
+            if(startAt>0)vid.currentTime=startAt;
+            vid.play().catch(function(){});
+          });
+        }else{
+          vid.src=url;
+          if(startAt>0)vid.currentTime=startAt;
+          vid.play().catch(function(){});
+        }
+      }
+
+      document.getElementById('syncBtn').onclick=function(){
+        sendPacket({type:'req_sync',sender:myId});
+      };
     })();
   </script>
 </body>
