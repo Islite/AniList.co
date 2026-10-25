@@ -216,6 +216,7 @@ body.is-embed .center-ctrls,body.is-embed .bottom-bar{display:none!important}
   var hls=null,curUrl='',rate=1.0,isLocked=false,isEmbed=false,hudTimer=null,bTimer=null,draggingSeek=false;
   var activeRoomCode=null,myPeerId='p_'+Math.random().toString(36).substring(2,9),myNickName=savedNick,isHost=false,isAdmin=false;
   var roomExpectedPass='',mqttClient=null,roomUsers={},sessionAdmins={},heartbeatTimer=null;
+  var lastKnownTime=0,isLocallyPaused=true,isApplyingRemote=false;
   var SPEEDS=[0.25,0.5,0.75,1.0,1.25,1.5,1.75,2.0,2.5,3.0];
 
   function fmtRate(v){var n=parseFloat(v)||1;return (n%1===0?n.toFixed(0):n.toFixed(2).replace(/0+$/,''))+'x';}
@@ -226,6 +227,59 @@ body.is-embed .center-ctrls,body.is-embed .bottom-bar{display:none!important}
     var l=u.toLowerCase();
     return l.indexOf('kodik')!==-1||l.indexOf('/seria/')!==-1||l.indexOf('/video/')!==-1||(!l.endsWith('.mp4')&&!l.endsWith('.m3u8')&&l.indexOf('.m3u8')===-1);
   }
+
+  function sendKodikCommand(action,param){
+    if(!kFrame||!kFrame.contentWindow)return;
+    try{
+      var kodikMsg={key:'kodik_player_api',value:{method:action}};
+      if(action==='seek')kodikMsg.value.time=parseFloat(param)||0;
+      kFrame.contentWindow.postMessage(kodikMsg,'*');
+      var pjsMsg={api:action};
+      if(action==='seek')pjsMsg.set=parseFloat(param)||0;
+      kFrame.contentWindow.postMessage(pjsMsg,'*');
+    }catch(err){}
+  }
+
+  window.addEventListener('message',function(ev){
+    var d=ev.data;
+    if(!d)return;
+    if(d.key==='kodik_player_api'&&d.value){
+      var m=d.value.method;
+      if(m==='play'){
+        isLocallyPaused=false;
+        if(!isApplyingRemote&&activeRoomCode&&(isHost||isAdmin))broadcastRoomState();
+      }else if(m==='pause'){
+        isLocallyPaused=true;
+        if(!isApplyingRemote&&activeRoomCode&&(isHost||isAdmin))broadcastRoomState();
+      }else if(m==='time_update'){
+        var t=parseFloat(d.value.value||d.value.time)||0;
+        lastKnownTime=t;
+      }
+    }else if(typeof d==='string'&&d.indexOf('event')!==-1){
+      try{
+        var p=JSON.parse(d);
+        if(p.event==='play'){
+          isLocallyPaused=false;
+          if(!isApplyingRemote&&activeRoomCode&&(isHost||isAdmin))broadcastRoomState();
+        }else if(p.event==='pause'){
+          isLocallyPaused=true;
+          if(!isApplyingRemote&&activeRoomCode&&(isHost||isAdmin))broadcastRoomState();
+        }else if(p.event==='time'){
+          lastKnownTime=parseFloat(p.time)||0;
+        }
+      }catch(e){}
+    }else if(typeof d==='object'&&d.event){
+      if(d.event==='play'){
+        isLocallyPaused=false;
+        if(!isApplyingRemote&&activeRoomCode&&(isHost||isAdmin))broadcastRoomState();
+      }else if(d.event==='pause'){
+        isLocallyPaused=true;
+        if(!isApplyingRemote&&activeRoomCode&&(isHost||isAdmin))broadcastRoomState();
+      }else if(d.event==='time'){
+        lastKnownTime=parseFloat(d.time)||0;
+      }
+    }
+  });
 
   function updateTimelineProgress(){
     var cur=vid.currentTime||0,dur=vid.duration||0;
@@ -272,9 +326,17 @@ body.is-embed .center-ctrls,body.is-embed .bottom-bar{display:none!important}
   }
 
   function togglePlay(){
-    if(isEmbed)return;
     if(activeRoomCode&&!isHost&&!isAdmin){
       flash('Только хост и админы управляют паузой');
+      return;
+    }
+    if(isEmbed){
+      if(isLocallyPaused){
+        sendKodikCommand('play');isLocallyPaused=false;
+      }else{
+        sendKodikCommand('pause');isLocallyPaused=true;
+      }
+      if(activeRoomCode&&(isHost||isAdmin))broadcastRoomState();
       return;
     }
     if(vid.paused){vid.play().catch(function(){});}
@@ -284,9 +346,16 @@ body.is-embed .center-ctrls,body.is-embed .bottom-bar{display:none!important}
   }
 
   function skipSec(sec){
-    if(isEmbed)return;
     if(activeRoomCode&&!isHost&&!isAdmin){
       flash('Только хост и админы могут перематывать');
+      return;
+    }
+    if(isEmbed){
+      var targetTime=Math.max(0,lastKnownTime+sec);
+      sendKodikCommand('seek',targetTime);
+      lastKnownTime=targetTime;
+      flash((sec>0?'+':'')+Math.round(sec)+'с');
+      if(activeRoomCode&&(isHost||isAdmin))broadcastRoomState();
       return;
     }
     var dur=vid.duration||0;var tgt=Math.min(dur,Math.max(0,(vid.currentTime||0)+sec));
@@ -345,10 +414,11 @@ body.is-embed .center-ctrls,body.is-embed .bottom-bar{display:none!important}
     if(activeRoomCode&&(isHost||isAdmin))broadcastRoomState();
   });
 
-  vid.addEventListener('playing',function(){playIcon.innerHTML='<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';wakeHud();});
-  vid.addEventListener('pause',function(){playIcon.innerHTML='<path d="M8 5v14l11-7z"/>';document.body.classList.remove('hud-off');});
+  vid.addEventListener('playing',function(){playIcon.innerHTML='<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';isLocallyPaused=false;wakeHud();});
+  vid.addEventListener('pause',function(){playIcon.innerHTML='<path d="M8 5v14l11-7z"/>';isLocallyPaused=true;document.body.classList.remove('hud-off');});
   vid.addEventListener('timeupdate',function(){
     var cur=vid.currentTime||0,dur=vid.duration||0;
+    lastKnownTime=cur;
     if(!draggingSeek&&dur>0)seek.value=String(Math.round((cur/dur)*1000));
     timeLbl.textContent=fmtTime(cur)+' / '+fmtTime(dur);
     updateTimelineProgress();
@@ -375,6 +445,9 @@ body.is-embed .center-ctrls,body.is-embed .bottom-bar{display:none!important}
       kFrame.style.display='block';
       if(kFrame.src!==url)kFrame.src=url;
       titleLbl.textContent='Kodik Плеер';
+      if(startSec>0){
+        setTimeout(function(){sendKodikCommand('seek',startSec);},1800);
+      }
       return;
     }
     isEmbed=false;
@@ -487,9 +560,11 @@ body.is-embed .center-ctrls,body.is-embed .bottom-bar{display:none!important}
   }
 
   function broadcastRoomState(){
+    var t=isEmbed?lastKnownTime:(vid.currentTime||0);
+    var p=isEmbed?isLocallyPaused:Boolean(vid.paused);
     sendMqttPacket({
       type:'sync',sender:myPeerId,name:myNickName,isHost:isHost,isAdmin:isAdmin,
-      link:curUrl,time:vid.currentTime||0,paused:Boolean(vid.paused),speed:rate
+      link:curUrl,time:t,paused:p,speed:rate
     });
   }
 
@@ -502,9 +577,11 @@ body.is-embed .center-ctrls,body.is-embed .bottom-bar{display:none!important}
           return;
         }
         roomUsers[d.sender]={name:d.name||'Зритель',isHost:false,isAdmin:Boolean(sessionAdmins[d.sender])};
+        var t=isEmbed?lastKnownTime:(vid.currentTime||0);
+        var p=isEmbed?isLocallyPaused:Boolean(vid.paused);
         sendMqttPacket({
           type:'welcome',target:d.sender,hostId:myPeerId,users:roomUsers,
-          link:curUrl,time:vid.currentTime||0,paused:Boolean(vid.paused),speed:rate
+          link:curUrl,time:t,paused:p,speed:rate
         });
         sendMqttPacket({type:'roster',users:roomUsers});
         updateViewerCount();
@@ -551,12 +628,25 @@ body.is-embed .center-ctrls,body.is-embed .bottom-bar{display:none!important}
   }
 
   function syncFromHost(d){
-    if(isEmbed)return;
+    isApplyingRemote=true;
     if(typeof d.speed==='number'&&Math.abs(rate-d.speed)>0.05)setRate(d.speed,false);
+    if(isEmbed){
+      if(typeof d.time==='number'&&Math.abs(lastKnownTime-d.time)>3.0){
+        sendKodikCommand('seek',d.time);lastKnownTime=d.time;
+      }
+      if(d.paused){
+        sendKodikCommand('pause');isLocallyPaused=true;
+      }else{
+        sendKodikCommand('play');isLocallyPaused=false;
+      }
+      setTimeout(function(){isApplyingRemote=false;},600);
+      return;
+    }
     var cur=vid.currentTime||0;
     if(typeof d.time==='number'&&Math.abs(cur-d.time)>2.5){vid.currentTime=d.time;}
     if(d.paused&&!vid.paused)vid.pause();
     else if(!d.paused&&vid.paused)vid.play().catch(function(){});
+    setTimeout(function(){isApplyingRemote=false;},600);
   }
 
   function updateViewerCount(){
