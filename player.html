@@ -1,205 +1,492 @@
 <!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-  <title>Kodik Watch Party</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.17/hls.light.min.js"></script>
-  <style>
-    :root{--bg:#09090b;--card:#18181b;--accent:#6366f1;--text:#fff;--sub:#94a3b8}
-    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-    html,body{margin:0;padding:0;width:100%;height:100%;background:#000;color:var(--text);font-family:system-ui,sans-serif;overflow:hidden}
-    .wrap{position:relative;width:100%;height:100%;display:flex;flex-direction:column}
-    .stage{position:relative;flex:1;width:100%;height:100%;display:flex;align-items:center;justify-content:center}
-    video,iframe{width:100%;height:100%;object-fit:contain;background:#000;border:0}
-    .hud{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:space-between;pointer-events:none;transition:opacity .25s ease}
-    .hud.off{opacity:0}
-    .bar{pointer-events:auto;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;background:linear-gradient(180deg,rgba(0,0,0,0.85),transparent)}
-    .bar.bottom{background:linear-gradient(0deg,rgba(0,0,0,0.85),transparent)}
-    .badge{background:rgba(99,102,241,0.25);border:1px solid rgba(99,102,241,0.4);color:#a5b4fc;padding:4px 10px;border-radius:12px;font-size:12px;font-weight:700}
-    .btn{background:rgba(255,255,255,0.18);border:0;color:#fff;padding:8px 14px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer}
-    .btn-main{background:var(--accent)}
-    .modal-box{position:absolute;inset:0;z-index:50;background:rgba(0,0,0,0.85);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:16px}
-    .card{width:100%;max-width:360px;background:var(--card);border-radius:16px;padding:20px;border:1px solid rgba(255,255,255,0.1)}
-    .field{width:100%;background:#000;border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:10px;color:#fff;font-size:13px;margin:8px 0 14px;outline:none}
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>AniList Kodik Player • Watch Party</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.17/hls.light.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+<style>
+:root{--sheet-bg:rgba(24,24,27,0.96);--panel-bg:rgba(28,28,30,0.94);--text-main:#ffffff;--text-sub:#a1a1aa;--tile-bg:rgba(255,255,255,0.22);--accent:#6366f1}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;width:100%;height:100%;background:#000;color:var(--text-main);overflow:hidden;font-family:system-ui,-apple-system,sans-serif;user-select:none}
+.app{position:relative;display:flex;flex-direction:column;width:100%;height:100%;background:#000}
+.stage{position:relative;flex:1;min-height:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#000;overflow:hidden}
+video,iframe{width:100%;height:100%;max-width:100%;max-height:100%;object-fit:contain;background:#000;border:0;outline:none}
+.top-bar{position:absolute;top:0;left:0;right:0;display:flex;flex-direction:column;padding:calc(10px + env(safe-area-inset-top, 0px)) 14px 10px;background:linear-gradient(180deg,rgba(0,0,0,0.95) 0%,rgba(0,0,0,0.65) 75%,transparent 100%);z-index:30;transition:opacity .25s ease}
+.top-row{display:flex;align-items:center;justify-content:space-between;width:100%;gap:8px}
+.top-left{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
+.top-right{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.title-text{font-size:14px;font-weight:700;color:var(--text-main);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:32px}
+.sub-bar{display:flex;align-items:center;gap:8px;margin-top:6px;padding-left:4px;overflow-x:auto}
+.pill-btn{background:var(--tile-bg);border:0;color:var(--text-main);border-radius:8px;padding:6px 12px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:4px;cursor:pointer;outline:none;line-height:normal;box-shadow:0 8px 24px rgba(0,0,0,0.4);transition:transform .12s ease,background .15s ease;white-space:nowrap}
+.pill-btn:active{transform:scale(0.92);background:rgba(255,255,255,0.38);color:#ffffff}
+.pill-btn.room-active{background:rgba(16,185,129,0.35);color:#6ee7b7;border:1px solid rgba(16,185,129,0.5)}
+.icon-btn{width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;border-radius:8px;background:var(--tile-bg);border:0;color:var(--text-main);cursor:pointer;outline:none;flex-shrink:0;box-shadow:0 8px 24px rgba(0,0,0,0.4);transition:transform .12s ease,background .15s ease}
+.icon-btn:active{transform:scale(0.92);background:rgba(255,255,255,0.38);color:#ffffff}
+.center-ctrls{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:36px;z-index:28;transition:opacity .25s ease;pointer-events:none}
+.c-btn{width:56px;height:56px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:var(--tile-bg);border:0;color:#fff;cursor:pointer;outline:none;box-shadow:0 8px 24px rgba(0,0,0,0.4);transition:transform .12s ease,background .15s ease;pointer-events:auto}
+.c-btn:active{transform:scale(0.92);background:rgba(255,255,255,0.38)}
+.c-play{width:70px;height:70px;background:var(--tile-bg);border:0;color:#fff;box-shadow:0 8px 24px rgba(0,0,0,0.4)}
+.c-play:active{background:rgba(255,255,255,0.38)}
+.c-btn svg{width:24px;height:24px;fill:currentColor}
+.c-play svg{width:32px;height:32px;fill:currentColor}
+.bottom-bar{position:absolute;left:0;right:0;bottom:0;display:flex;flex-direction:column;gap:6px;padding:12px 14px calc(10px + env(safe-area-inset-top, 0px));background:linear-gradient(0deg,rgba(0,0,0,0.95) 0%,rgba(0,0,0,0.65) 70%,transparent 100%);z-index:30;transition:opacity .25s ease}
+.timeline-box{position:relative;width:100%;height:20px;display:flex;align-items:center;cursor:pointer}
+.timeline-track{position:absolute;left:0;right:0;height:4px;background:rgba(255,255,255,0.18);border-radius:2px;pointer-events:none}
+.timeline-buffer{position:absolute;left:0;height:4px;background:rgba(255,255,255,0.42);border-radius:2px;width:0%;pointer-events:none;transition:width .12s linear}
+.timeline-played{position:absolute;left:0;height:4px;background:#ffffff;border-radius:2px;width:0%;pointer-events:none}
+.timeline-seek{position:absolute;left:0;right:0;width:100%;height:20px;margin:0;padding:0;background:transparent;outline:none;border:0;-webkit-appearance:none;cursor:pointer;z-index:2}
+.timeline-seek::-webkit-slider-runnable-track{height:20px;background:transparent;border:0}
+.timeline-seek::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;background:#ffffff;border:0;outline:none;margin-top:3px;box-shadow:0 1px 4px rgba(0,0,0,0.6)}
+.b-row{display:flex;align-items:center;justify-content:space-between;height:28px}
+.time-lbl{font-size:13px;font-variant-numeric:tabular-nums;color:var(--text-main);font-weight:700;display:inline-flex;align-items:center;height:28px;line-height:28px;letter-spacing:0.3px}
+.b-actions{display:flex;align-items:center;gap:8px;height:28px}
+.skip-btn{width:34px;height:28px;border-radius:7px;background:var(--tile-bg);border:0;color:var(--text-main);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;line-height:1;font-weight:700;box-shadow:0 8px 24px rgba(0,0,0,0.4);transition:transform .12s ease,background .15s ease}
+.skip-btn:active{transform:scale(0.92);background:rgba(255,255,255,0.38);color:#ffffff}
+.fs-btn{width:28px;height:28px;border-radius:7px;background:var(--tile-bg);border:0;color:var(--text-main);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,0.4);transition:transform .12s ease,background .15s ease}
+.fs-btn:active{transform:scale(0.92);background:rgba(255,255,255,0.38);color:#ffffff}
+.toast{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--panel-bg);border:0;padding:10px 18px;border-radius:10px;font-size:12px;font-weight:600;text-align:center;max-width:86%;z-index:45;box-shadow:0 10px 25px rgba(0,0,0,0.85);display:none}
+.badge{position:absolute;top:18%;left:50%;transform:translateX(-50%);background:var(--panel-bg);border:0;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;display:none;pointer-events:none;z-index:40}
+.modal-bg{position:absolute;inset:0;background:rgba(0,0,0,0.85);backdrop-filter:blur(3px);z-index:60;display:none;align-items:flex-end;justify-content:center}
+.modal-sheet{width:100%;max-width:440px;background:var(--sheet-bg);border-top-left-radius:18px;border-top-right-radius:18px;border:0;padding:14px;max-height:76%;display:flex;flex-direction:column}
+.modal-hdr{display:flex;align-items:center;justify-content:space-between;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,0.12)}
+.modal-title{font-size:13px;font-weight:700;color:var(--text-main)}
+.dropdown{position:absolute;background:rgba(28,28,30,0.96);border:0;border-radius:10px;padding:4px;z-index:70;display:none;flex-direction:column;box-shadow:0 12px 30px rgba(0,0,0,0.9);max-height:242px;overflow-y:auto}
+.drop-item{padding:8px 14px;font-size:12px;font-weight:600;color:var(--text-main);background:transparent;border:0;text-align:left;cursor:pointer;border-radius:6px}
+.drop-item.active{color:#121212;background:#ffffff}
+.inp-field{width:100%;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.18);border-radius:8px;padding:10px 12px;color:#fff;font-size:13px;outline:none}
+.user-row{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:rgba(255,255,255,0.06);border-radius:8px;margin-bottom:6px;font-size:12px}
+body.hud-off .top-bar,body.hud-off .center-ctrls,body.hud-off .bottom-bar{opacity:0;pointer-events:none}
+body.locked .top-bar,body.locked .center-ctrls,body.locked .bottom-bar{display:none!important}
+</style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="stage" id="stage">
-      <video id="vid" playsinline controls></video>
-      <div class="hud" id="hud">
-        <div class="bar">
-          <div class="badge">Комната: <span id="rLbl">...</span></div>
-          <button class="btn" id="uBtn">Зрители (<span id="uCount">1</span>)</button>
+<div class="app" id="appRoot">
+  <div class="stage" id="stage">
+    <video id="vid" playsinline preload="auto"></video>
+    <div class="toast" id="toast"></div>
+    <div class="badge" id="badge"></div>
+    <div class="top-bar" id="topBar">
+      <div class="top-row">
+        <div class="top-left">
+          <div class="title-text" id="titleLbl">AniList Player</div>
         </div>
-        <div class="bar bottom">
-          <span style="font-size:12px;color:var(--sub)">Управление синхронизировано с хостом</span>
-          <button class="btn" id="syncBtn">Подтянуть таймкод</button>
+        <div class="top-right">
+          <button class="pill-btn" id="roomBtn"><span id="roomBtnLbl">+ Комната</span></button>
+          <button class="pill-btn" id="speedBtn"><span id="speedLbl">1.0x</span> ▾</button>
+          <button class="pill-btn" id="qualityBtn"><span id="qualityLbl">720p</span> ▾</button>
+          <button class="icon-btn" id="lockBtn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg></button>
+        </div>
+      </div>
+      <div class="sub-bar">
+        <button class="pill-btn" id="loadUrlBtn">🔗 Ссылка на видео</button>
+      </div>
+    </div>
+    <div class="center-ctrls" id="centerCtrls">
+      <button class="c-btn" id="cPrevBtn"><svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>
+      <button class="c-btn c-play" id="cPlayBtn"><svg id="playIcon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
+      <button class="c-btn" id="cNextBtn"><svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg></button>
+    </div>
+    <div class="bottom-bar" id="bottomBar">
+      <div class="timeline-box" id="timelineBox">
+        <div class="timeline-track"></div>
+        <div class="timeline-buffer" id="timelineBuffer"></div>
+        <div class="timeline-played" id="timelinePlayed"></div>
+        <input id="seek" class="timeline-seek" type="range" min="0" max="1000" step="1" value="0">
+      </div>
+      <div class="b-row">
+        <span class="time-lbl" id="timeLbl">00:00 / 00:00</span>
+        <div class="b-actions">
+          <button class="skip-btn" id="skip125Btn" title="Пропуск 1:15">»</button>
+          <button class="fs-btn" id="fsBtn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg></button>
+        </div>
+      </div>
+    </div>
+    <div class="dropdown" id="speedDrop"></div>
+    <div class="dropdown" id="qualityDrop"></div>
+
+    <div class="modal-bg" id="createRoomModal">
+      <div class="modal-sheet">
+        <div class="modal-hdr">
+          <span class="modal-title">Создать комнату просмотра</span>
+          <button class="pill-btn" id="closeCreateRoomBtn">✕</button>
+        </div>
+        <div style="padding:14px 0">
+          <div style="font-size:11px;color:var(--text-sub);margin-bottom:6px">ВАШЕ ИМЯ (ОБЯЗАТЕЛЬНО)</div>
+          <input type="text" id="rNickInp" class="inp-field" placeholder="Введите ваш ник">
+          <div style="font-size:11px;color:var(--text-sub);margin:10px 0 6px">ПАРОЛЬ (НЕОБЯЗАТЕЛЬНО)</div>
+          <input type="password" id="rPassInp" class="inp-field" placeholder="Оставьте пустым если нет">
+          <button class="pill-btn" id="submitCreateRoomBtn" style="width:100%;margin-top:14px;padding:12px;justify-content:center;background:#6366f1">Открыть сервер комнаты</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-bg" id="viewersModal">
+      <div class="modal-sheet">
+        <div class="modal-hdr">
+          <span class="modal-title">Комната: <span id="vRoomCodeLbl">...</span></span>
+          <button class="pill-btn" id="closeViewersBtn">✕</button>
+        </div>
+        <div style="padding:12px 0">
+          <button class="pill-btn" id="copyRoomLinkBtn" style="width:100%;padding:10px;justify-content:center;margin-bottom:12px;background:rgba(99,102,241,0.25);border:1px solid rgba(99,102,241,0.4)">Скопировать ссылку для друзей</button>
+          <div id="viewersListContainer" style="max-height:36vh;overflow-y:auto"></div>
+          <button class="pill-btn" id="leaveRoomBtn" style="width:100%;margin-top:10px;padding:10px;justify-content:center;background:rgba(239,68,68,0.2);color:#fca5a5;border:1px solid rgba(239,68,68,0.3)">Покинуть комнату</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-bg" id="urlModal">
+      <div class="modal-sheet">
+        <div class="modal-hdr">
+          <span class="modal-title">Открыть поток или видео</span>
+          <button class="pill-btn" id="closeUrlBtn">✕</button>
+        </div>
+        <div style="padding:14px 0">
+          <div style="font-size:11px;color:var(--text-sub);margin-bottom:6px">ССЫЛКА (.M3U8 / MP4 / KODIK)</div>
+          <input type="text" id="streamUrlInp" class="inp-field" placeholder="https://.../video.m3u8">
+          <button class="pill-btn" id="submitUrlBtn" style="width:100%;margin-top:14px;padding:12px;justify-content:center;background:#6366f1">Запустить воспроизведение</button>
         </div>
       </div>
     </div>
   </div>
+</div>
 
-  <div class="modal-box" id="joinDlg">
-    <div class="card">
-      <h3 style="margin:0 0 8px">Вход в комнату</h3>
-      <div style="font-size:12px;color:var(--sub)">Введите ник для отображения в списке зрителей</div>
-      <form id="joinFrm">
-        <input type="text" id="nInp" class="field" placeholder="Ваш ник" required autofocus>
-        <input type="text" id="rInp" class="field" placeholder="Код комнаты" required>
-        <button type="submit" class="btn btn-main" style="width:100%;padding:11px">Присоединиться</button>
-      </form>
-    </div>
-  </div>
+<script>
+(function(){
+  var vid=document.getElementById('vid'),toast=document.getElementById('toast'),badge=document.getElementById('badge'),stage=document.getElementById('stage');
+  var topBar=document.getElementById('topBar'),bottomBar=document.getElementById('bottomBar'),centerCtrls=document.getElementById('centerCtrls');
+  var titleLbl=document.getElementById('titleLbl');
+  var speedBtn=document.getElementById('speedBtn'),speedLbl=document.getElementById('speedLbl'),speedDrop=document.getElementById('speedDrop');
+  var qualityBtn=document.getElementById('qualityBtn'),qualityLbl=document.getElementById('qualityLbl'),qualityDrop=document.getElementById('qualityDrop');
+  var lockBtn=document.getElementById('lockBtn');
+  var cPrevBtn=document.getElementById('cPrevBtn'),cPlayBtn=document.getElementById('cPlayBtn'),cNextBtn=document.getElementById('cNextBtn'),playIcon=document.getElementById('playIcon');
+  var seek=document.getElementById('seek'),timelineBuffer=document.getElementById('timelineBuffer'),timelinePlayed=document.getElementById('timelinePlayed');
+  var timeLbl=document.getElementById('timeLbl'),skip125Btn=document.getElementById('skip125Btn'),fsBtn=document.getElementById('fsBtn');
+  var roomBtn=document.getElementById('roomBtn'),roomBtnLbl=document.getElementById('roomBtnLbl');
+  var createRoomModal=document.getElementById('createRoomModal'),closeCreateRoomBtn=document.getElementById('closeCreateRoomBtn');
+  var rNickInp=document.getElementById('rNickInp'),rPassInp=document.getElementById('rPassInp'),submitCreateRoomBtn=document.getElementById('submitCreateRoomBtn');
+  var viewersModal=document.getElementById('viewersModal'),closeViewersBtn=document.getElementById('closeViewersBtn');
+  var vRoomCodeLbl=document.getElementById('vRoomCodeLbl'),copyRoomLinkBtn=document.getElementById('copyRoomLinkBtn');
+  var viewersListContainer=document.getElementById('viewersListContainer'),leaveRoomBtn=document.getElementById('leaveRoomBtn');
+  var loadUrlBtn=document.getElementById('loadUrlBtn'),urlModal=document.getElementById('urlModal'),closeUrlBtn=document.getElementById('closeUrlBtn');
+  var streamUrlInp=document.getElementById('streamUrlInp'),submitUrlBtn=document.getElementById('submitUrlBtn');
 
-  <div class="modal-box" id="uDlg" style="display:none">
-    <div class="card">
-      <h3 style="margin:0 0 12px">Список зрителей</h3>
-      <div id="uList" style="max-height:200px;overflow-y:auto;font-size:12px;margin-bottom:14px"></div>
-      <button class="btn" id="closeUBtn" style="width:100%">Закрыть</button>
-    </div>
-  </div>
+  var qParams=new URLSearchParams(window.location.search);
+  var targetRoom=qParams.get('room')||'';
+  var hls=null,curUrl='',rate=1.0,isLocked=false,isFs=false,hudTimer=null,bTimer=null,draggingSeek=false;
+  var activeRoomCode=null,myPeerId='p_'+Math.random().toString(36).substring(2,8),myNickName='',isHost=false,isAdmin=false;
+  var mqttClient=null,roomUsers={},sessionAdmins={},heartbeatTimer=null;
+  var SPEEDS=[0.25,0.5,0.75,1.0,1.25,1.5,1.75,2.0,2.5,3.0];
 
-  <script>
-    (function(){
-      var q=new URLSearchParams(window.location.search);
-      var room=(q.get('room')||'KDK1000').toUpperCase();
-      var vid=document.getElementById('vid');
-      var hud=document.getElementById('hud');
-      var stage=document.getElementById('stage');
-      var rLbl=document.getElementById('rLbl');
-      var rInp=document.getElementById('rInp');
-      var nInp=document.getElementById('nInp');
-      var joinDlg=document.getElementById('joinDlg');
-      var uDlg=document.getElementById('uDlg');
-      var uList=document.getElementById('uList');
-      var uCount=document.getElementById('uCount');
+  function fmtRate(v){var n=parseFloat(v)||1;return (n%1===0?n.toFixed(0):n.toFixed(2).replace(/0+$/,''))+'x';}
+  function fmtTime(sec){if(!sec||isNaN(sec)||sec<0)return '00:00';var t=Math.floor(sec),h=Math.floor(t/3600),m=Math.floor((t%3600)/60),s=t%60;var mm=m<10?'0'+m:String(m),ss=s<10?'0'+s:String(s);return h>0?(h+':'+mm+':'+ss):(mm+':'+ss);}
 
-      rInp.value=room;
-      rLbl.textContent=room;
-
-      var client=null;
-      var myId='w_'+Math.random().toString(36).substring(2,8);
-      var myNick='';
-      var activeRoom=room;
-      var hls=null;
-      var curUrl='';
-      var users={};
-
-      stage.onclick=function(e){
-        if(e.target.closest('button')||e.target.closest('input'))return;
-        hud.classList.toggle('off');
-      };
-
-      document.getElementById('uBtn').onclick=function(){
-        renderUsers();
-        uDlg.style.display='flex';
-      };
-      document.getElementById('closeUBtn').onclick=function(){
-        uDlg.style.display='none';
-      };
-
-      function renderUsers(){
-        uList.innerHTML='';
-        var keys=Object.keys(users);
-        uCount.textContent=Math.max(1,keys.length);
-        keys.forEach(function(k){
-          var row=document.createElement('div');
-          row.style.padding='6px 0';
-          row.textContent=users[k].name+(users[k].isHost?' (Хост)':(users[k].isAdmin?' (Админ)':''));
-          uList.appendChild(row);
-        });
+  function updateTimelineProgress(){
+    var cur=vid.currentTime||0,dur=vid.duration||0;
+    if(dur>0){
+      var progPct=Math.max(0,Math.min(100,(cur/dur)*100));
+      timelinePlayed.style.width=progPct.toFixed(2)+'%';
+      var maxBuf=0;
+      if(vid.buffered&&vid.buffered.length>0){
+        for(var i=0;i<vid.buffered.length;i++){
+          var bEnd=vid.buffered.end(i);
+          if(bEnd>maxBuf)maxBuf=bEnd;
+        }
       }
+      var bufPct=Math.max(progPct,Math.min(100,(maxBuf/dur)*100));
+      timelineBuffer.style.width=bufPct.toFixed(2)+'%';
+    }else{
+      timelinePlayed.style.width='0%';timelineBuffer.style.width='0%';
+    }
+  }
 
-      document.getElementById('joinFrm').onsubmit=function(e){
-        e.preventDefault();
-        myNick=nInp.value.trim()||'Гость';
-        activeRoom=(rInp.value.trim()||'KDK1000').toUpperCase();
-        rLbl.textContent=activeRoom;
-        joinDlg.style.display='none';
-        initMqtt();
-      };
+  function flash(t){badge.textContent=t;badge.style.display='block';if(bTimer)clearTimeout(bTimer);bTimer=setTimeout(function(){badge.style.display='none';},850);}
+  function wakeHud(){
+    if(isLocked)return;
+    document.body.classList.remove('hud-off');
+    if(hudTimer)clearTimeout(hudTimer);
+    if(!vid.paused){
+      hudTimer=setTimeout(function(){if(!vid.paused){document.body.classList.add('hud-off');speedDrop.style.display='none';}},3400);
+    }
+  }
 
-      function initMqtt(){
-        client=new Paho.MQTT.Client('broker.hivemq.com',8884,'/mqtt',myId);
-        client.onConnectionLost=function(){setTimeout(initMqtt,3000);};
-        client.onMessageArrived=function(msg){
-          try{
-            var p=JSON.parse(msg.payloadString);
-            onPacket(p);
-          }catch(err){}
+  function setRate(val,sync){
+    var n=Math.max(0.25,Math.min(4.0,parseFloat(val)||1.0));
+    rate=n;vid.playbackRate=rate;speedLbl.textContent=fmtRate(rate);flash(fmtRate(rate));
+    if(sync!==false&&activeRoomCode&&(isHost||isAdmin))broadcastRoomState();
+  }
+
+  function buildSpeedDrop(){
+    speedDrop.innerHTML='';
+    SPEEDS.forEach(function(s){
+      var b=document.createElement('button');b.className='drop-item'+(Math.abs(s-rate)<0.02?' active':'');b.textContent=s+'x';
+      b.onclick=function(e){e.stopPropagation();setRate(s,true);speedDrop.style.display='none';wakeHud();};
+      speedDrop.appendChild(b);
+    });
+  }
+
+  function togglePlay(){
+    if(activeRoomCode&&!isHost&&!isAdmin){
+      flash('Только хост и админы управляют паузой');
+      return;
+    }
+    if(vid.paused){vid.play().catch(function(){});}
+    else{vid.pause();}
+    wakeHud();
+    if(activeRoomCode&&(isHost||isAdmin))broadcastRoomState();
+  }
+
+  function skipSec(sec){
+    if(activeRoomCode&&!isHost&&!isAdmin){
+      flash('Только хост и админы могут перематывать');
+      return;
+    }
+    var dur=vid.duration||0;var tgt=Math.min(dur,Math.max(0,(vid.currentTime||0)+sec));
+    vid.currentTime=tgt;flash((sec>0?'+':'')+Math.round(sec)+'с');wakeHud();
+    if(activeRoomCode&&(isHost||isAdmin))broadcastRoomState();
+  }
+
+  stage.onclick=function(e){
+    if(e.target.closest('button')||e.target.closest('input')||e.target.closest('.dropdown')||e.target.closest('.modal-sheet')||e.target.closest('.modal-bg'))return;
+    speedDrop.style.display='none';
+    if(isLocked)return;
+    if(document.body.classList.contains('hud-off')){wakeHud();}
+    else{document.body.classList.add('hud-off');}
+  };
+
+  cPlayBtn.onclick=function(e){e.stopPropagation();togglePlay();};
+  skip125Btn.onclick=function(e){e.stopPropagation();skipSec(85);};
+  speedBtn.onclick=function(e){
+    e.stopPropagation();
+    buildSpeedDrop();var r=speedBtn.getBoundingClientRect();speedDrop.style.top=(r.bottom+6)+'px';speedDrop.style.right=(window.innerWidth-r.right)+'px';
+    speedDrop.style.display=speedDrop.style.display==='flex'?'none':'flex';
+  };
+
+  lockBtn.onclick=function(e){
+    e.stopPropagation();isLocked=!isLocked;
+    document.body.classList.toggle('locked',isLocked);
+    speedDrop.style.display='none';createRoomModal.style.display='none';viewersModal.style.display='none';
+    flash(isLocked?'Экран заблокирован':'Разблокировано');
+  };
+
+  fsBtn.onclick=function(e){
+    e.stopPropagation();
+    if(!document.fullscreenElement){document.documentElement.requestFullscreen().catch(function(){});}
+    else{document.exitFullscreen().catch(function(){});}
+  };
+
+  seek.addEventListener('input',function(){
+    if(activeRoomCode&&!isHost&&!isAdmin)return;
+    draggingSeek=true;var dur=vid.duration||0;
+    if(dur>0){
+      var pos=(parseFloat(seek.value)/1000)*dur;
+      timelinePlayed.style.width=((pos/dur)*100).toFixed(2)+'%';
+      timeLbl.textContent=fmtTime(pos)+' / '+fmtTime(dur);
+    }
+  });
+
+  seek.addEventListener('change',function(){
+    if(activeRoomCode&&!isHost&&!isAdmin){
+      flash('Только хост и админы могут перематывать');
+      draggingSeek=false;return;
+    }
+    var dur=vid.duration||0;
+    if(dur>0){vid.currentTime=(parseFloat(seek.value)/1000)*dur;}
+    draggingSeek=false;wakeHud();
+    if(activeRoomCode&&(isHost||isAdmin))broadcastRoomState();
+  });
+
+  vid.addEventListener('playing',function(){playIcon.innerHTML='<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';wakeHud();});
+  vid.addEventListener('pause',function(){playIcon.innerHTML='<path d="M8 5v14l11-7z"/>';document.body.classList.remove('hud-off');});
+  vid.addEventListener('timeupdate',function(){
+    var cur=vid.currentTime||0,dur=vid.duration||0;
+    if(!draggingSeek&&dur>0)seek.value=String(Math.round((cur/dur)*1000));
+    timeLbl.textContent=fmtTime(cur)+' / '+fmtTime(dur);
+    updateTimelineProgress();
+  });
+
+  loadUrlBtn.onclick=function(e){e.stopPropagation();urlModal.style.display='flex';};
+  closeUrlBtn.onclick=function(){urlModal.style.display='none';};
+  submitUrlBtn.onclick=function(){
+    var u=(streamUrlInp.value||'').trim();
+    if(!u)return;
+    urlModal.style.display='none';
+    mountVideo(u,0);
+    if(activeRoomCode&&(isHost||isAdmin))broadcastRoomState();
+  };
+
+  function mountVideo(url,startSec){
+    curUrl=url;
+    if(window.Hls&&window.Hls.isSupported()&&url.indexOf('.m3u8')!==-1){
+      if(hls)hls.destroy();
+      hls=new window.Hls();
+      hls.loadSource(url);
+      hls.attachMedia(vid);
+      hls.on(window.Hls.Events.MANIFEST_PARSED,function(){
+        if(startSec>0)vid.currentTime=startSec;
+        vid.play().catch(function(){});
+      });
+    }else{
+      vid.src=url;
+      if(startSec>0)vid.currentTime=startSec;
+      vid.play().catch(function(){});
+    }
+    titleLbl.textContent='Видеопоток';
+  }
+
+  roomBtn.onclick=function(e){
+    e.stopPropagation();
+    if(!activeRoomCode){
+      rNickInp.value=myNickName||'';createRoomModal.style.display='flex';
+    }else{
+      vRoomCodeLbl.textContent=activeRoomCode;renderViewersList();viewersModal.style.display='flex';
+    }
+  };
+
+  closeCreateRoomBtn.onclick=function(){createRoomModal.style.display='none';};
+  closeViewersBtn.onclick=function(){viewersModal.style.display='none';};
+  submitCreateRoomBtn.onclick=function(){
+    var n=(rNickInp.value||'').trim();
+    if(!n){flash('Введите ник');return;}
+    myNickName=n;createRoomModal.style.display='none';
+    startRoomSession('KDK'+Math.floor(1000+Math.random()*9000),true,true);
+  };
+
+  function startRoomSession(code,asHost,asAdmin){
+    activeRoomCode=code;isHost=Boolean(asHost);isAdmin=Boolean(asAdmin);
+    roomUsers={};sessionAdmins={};
+    roomUsers[myPeerId]={name:myNickName,isHost:isHost,isAdmin:isAdmin};
+    roomBtnLbl.textContent='Смотрят (1)';roomBtn.classList.add('room-active');
+    flash('Комната '+activeRoomCode+' создана');
+    connectRoomMqtt();
+  }
+
+  function connectRoomMqtt(){
+    if(mqttClient){try{mqttClient.disconnect();}catch(e){}mqttClient=null;}
+    mqttClient=new Paho.MQTT.Client('broker.hivemq.com',8884,'/mqtt',myPeerId);
+    mqttClient.onConnectionLost=function(){if(activeRoomCode)setTimeout(connectRoomMqtt,3000);};
+    mqttClient.onMessageArrived=function(msg){
+      try{
+        var data=JSON.parse(msg.payloadString);
+        handleMqttPacket(data);
+      }catch(err){}
+    };
+    mqttClient.connect({
+      useSSL:true,timeout:5,
+      onSuccess:function(){
+        var topic='etg_kdk/v2/'+activeRoomCode;
+        mqttClient.subscribe(topic);
+        sendMqttPacket({type:'join',sender:myPeerId,name:myNickName,isHost:isHost,isAdmin:isAdmin});
+        if(heartbeatTimer)clearInterval(heartbeatTimer);
+        heartbeatTimer=setInterval(function(){
+          if(activeRoomCode&&isHost)broadcastRoomState();
+        },2500);
+      }
+    });
+  }
+
+  function sendMqttPacket(obj){
+    if(!mqttClient||!mqttClient.isConnected())return;
+    var m=new Paho.MQTT.Message(JSON.stringify(obj));
+    m.destinationName='etg_kdk/v2/'+activeRoomCode;
+    mqttClient.send(m);
+  }
+
+  function broadcastRoomState(){
+    sendMqttPacket({
+      type:'sync',sender:myPeerId,name:myNickName,isHost:isHost,isAdmin:isAdmin,
+      link:curUrl,time:vid.currentTime||0,paused:Boolean(vid.paused),speed:rate
+    });
+  }
+
+  function handleMqttPacket(d){
+    if(!d||d.sender===myPeerId)return;
+    if(d.type==='join'||d.type==='heartbeat'||d.type==='sync'){
+      var targetIsAdmin=Boolean(d.isAdmin)||Boolean(sessionAdmins[d.sender]);
+      roomUsers[d.sender]={name:d.name||'Зритель',isHost:Boolean(d.isHost),isAdmin:targetIsAdmin};
+      updateViewerCount();
+      if(d.type==='sync'&&!isHost){
+        if(d.link&&d.link!==curUrl)mountVideo(d.link,d.time||0);
+        else syncFromHost(d);
+      }
+    }else if(d.type==='kick'&&d.target===myPeerId){
+      flash('Вы были исключены из комнаты');leaveRoom();
+    }else if(d.type==='admin_role'){
+      sessionAdmins[d.target]=Boolean(d.state);
+      if(roomUsers[d.target])roomUsers[d.target].isAdmin=Boolean(d.state);
+      if(d.target===myPeerId){
+        isAdmin=Boolean(d.state);flash(isAdmin?'Вам выданы права админа':'Права админа сняты');
+      }
+      renderViewersList();
+    }
+  }
+
+  function syncFromHost(d){
+    if(typeof d.speed==='number'&&Math.abs(rate-d.speed)>0.05)setRate(d.speed,false);
+    var cur=vid.currentTime||0;
+    if(typeof d.time==='number'&&Math.abs(cur-d.time)>2.5){vid.currentTime=d.time;}
+    if(d.paused&&!vid.paused)vid.pause();
+    else if(!d.paused&&vid.paused)vid.play().catch(function(){});
+  }
+
+  function updateViewerCount(){
+    var c=Object.keys(roomUsers).length;
+    roomBtnLbl.textContent='Смотрят ('+Math.max(1,c)+')';
+    if(viewersModal.style.display==='flex')renderViewersList();
+  }
+
+  function renderViewersList(){
+    viewersListContainer.innerHTML='';
+    Object.keys(roomUsers).forEach(function(pId){
+      var u=roomUsers[pId];
+      var row=document.createElement('div');row.className='user-row';
+      var titleSpan=document.createElement('span');
+      titleSpan.textContent=u.name+(u.isHost?' 👑 Хост':(u.isAdmin?' 🛡 Админ':''))+(pId===myPeerId?' (Вы)':'');
+      row.appendChild(titleSpan);
+      if(isHost&&pId!==myPeerId){
+        var actBox=document.createElement('div');actBox.style.display='flex';actBox.style.gap='4px';
+        var admBtn=document.createElement('button');admBtn.className='pill-btn';
+        admBtn.textContent=u.isAdmin?'- Админ':'+ Админ';
+        admBtn.onclick=function(e){
+          e.stopPropagation();var nState=!u.isAdmin;
+          sessionAdmins[pId]=nState;u.isAdmin=nState;
+          sendMqttPacket({type:'admin_role',target:pId,state:nState});renderViewersList();
         };
-        client.connect({
-          useSSL:true,
-          timeout:5,
-          onSuccess:function(){
-            var top='etg_kdk/v2/'+activeRoom;
-            client.subscribe(top);
-            sendPacket({type:'join',sender:myId,name:myNick,role:'viewer'});
-          }
-        });
+        var kickBtn=document.createElement('button');kickBtn.className='pill-btn';
+        kickBtn.textContent='✕';kickBtn.style.color='#fca5a5';
+        kickBtn.onclick=function(e){
+          e.stopPropagation();sendMqttPacket({type:'kick',target:pId});
+          delete roomUsers[pId];updateViewerCount();
+        };
+        actBox.appendChild(admBtn);actBox.appendChild(kickBtn);row.appendChild(actBox);
       }
+      viewersListContainer.appendChild(row);
+    });
+  }
 
-      function sendPacket(obj){
-        if(!client||!client.isConnected())return;
-        var m=new Paho.MQTT.Message(JSON.stringify(obj));
-        m.destinationName='etg_kdk/v2/'+activeRoom;
-        client.send(m);
-      }
+  copyRoomLinkBtn.onclick=function(){
+    var base=window.location.origin+window.location.pathname;
+    var link=base+(base.indexOf('?')===-1?'?':'&')+'room='+encodeURIComponent(activeRoomCode);
+    if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(link);
+    flash('Ссылка скопирована');
+  };
 
-      function onPacket(d){
-        if(!d||d.sender===myId)return;
-        if(d.type==='join'||d.type==='heartbeat'||d.type==='sync'){
-          if(d.sender){
-            users[d.sender]={name:d.name||'Участник',isAdmin:Boolean(d.isAdmin),isHost:Boolean(d.isHost)};
-            renderUsers();
-          }
-          if(d.link&&d.link!==curUrl){
-            curUrl=d.link;
-            loadStream(curUrl,d.time||0);
-          }else if(typeof d.time==='number'){
-            syncTime(d.time,d.paused,d.speed);
-          }
-        }else if(d.type==='state'){
-          syncTime(d.time,d.paused,d.speed);
-        }
-      }
+  function leaveRoom(){
+    if(heartbeatTimer){clearInterval(heartbeatTimer);heartbeatTimer=null;}
+    if(mqttClient){try{mqttClient.disconnect();}catch(e){}mqttClient=null;}
+    activeRoomCode=null;isHost=false;isAdmin=false;roomUsers={};sessionAdmins={};
+    roomBtn.classList.remove('room-active');roomBtnLbl.textContent='+ Комната';
+    viewersModal.style.display='none';flash('Вы вышли из комнаты');
+  }
 
-      function syncTime(t,paused,spd){
-        if(typeof spd==='number'&&Math.abs(vid.playbackRate-spd)>0.05){
-          vid.playbackRate=spd;
-        }
-        var cur=vid.currentTime||0;
-        if(Math.abs(cur-t)>2.5){
-          vid.currentTime=t;
-        }
-        if(paused&&!vid.paused)vid.pause();
-        else if(!paused&&vid.paused)vid.play().catch(function(){});
-      }
+  leaveRoomBtn.onclick=function(){leaveRoom();};
 
-      function loadStream(url,startAt){
-        if(window.Hls&&window.Hls.isSupported()&&url.indexOf('.m3u8')!==-1){
-          if(hls)hls.destroy();
-          hls=new window.Hls();
-          hls.loadSource(url);
-          hls.attachMedia(vid);
-          hls.on(window.Hls.Events.MANIFEST_PARSED,function(){
-            if(startAt>0)vid.currentTime=startAt;
-            vid.play().catch(function(){});
-          });
-        }else{
-          vid.src=url;
-          if(startAt>0)vid.currentTime=startAt;
-          vid.play().catch(function(){});
-        }
-      }
-
-      document.getElementById('syncBtn').onclick=function(){
-        sendPacket({type:'req_sync',sender:myId});
-      };
-    })();
-  </script>
+  if(targetRoom){
+    myNickName='Гость_'+Math.floor(100+Math.random()*900);
+    startRoomSession(targetRoom.toUpperCase(),false,false);
+  }
+})();
+</script>
 </body>
 </html>
