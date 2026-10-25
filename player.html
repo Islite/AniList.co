@@ -8,23 +8,18 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
 <style>
-:root{--sheet-bg:rgba(24,24,27,0.96);--panel-bg:rgba(28,28,30,0.92);--text-main:#ffffff;--text-sub:#a1a1aa;--tile-bg:rgba(255,255,255,0.22);--accent-green:#10b981;--accent-red:#ef4444;--accent-blue:#3b82f6}
+:root{--sheet-bg:rgba(24,24,27,0.96);--panel-bg:rgba(28,28,30,0.92);--text-main:#ffffff;--text-sub:#a1a1aa;--tile-bg:rgba(255,255,255,0.14);--accent-green:#10b981;--accent-red:#ef4444;--accent-blue:#3b82f6}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;padding:0;width:100%;height:100%;background:#000;color:var(--text-main);overflow:hidden;font-family:"Manrope",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;user-select:none}
 .app{position:relative;display:flex;flex-direction:column;width:100%;height:100%;background:#000}
 .stage{position:relative;flex:1;min-height:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#000;overflow:hidden}
-video,iframe{position:absolute;inset:0;width:100%;height:100%;max-width:100%;max-height:100%;object-fit:contain;background:#000;border:0;outline:none}
-iframe{pointer-events:none;z-index:1}
-.surface-curtain{position:absolute;inset:0;background:#000;z-index:2;pointer-events:none;display:none}
-.surface-mask-top{position:absolute;top:0;left:0;right:0;height:46px;background:#000;z-index:3;pointer-events:none;display:none}
-.surface-mask-bottom{position:absolute;bottom:0;left:0;right:0;height:46px;background:#000;z-index:3;pointer-events:none;display:none}
-body.mode-surface.surface-paused .surface-mask-top,body.mode-surface.surface-paused .surface-mask-bottom{display:block}
-.top-bar{position:absolute;top:0;left:0;right:0;display:flex;flex-direction:column;padding:calc(10px + env(safe-area-inset-top, 0px)) 14px 10px;background:linear-gradient(180deg,#000000 0%,rgba(0,0,0,0.96) 54%,rgba(0,0,0,0.68) 82%,transparent 100%);z-index:30;transition:opacity .25s ease}
+video{position:absolute;inset:0;width:100%;height:100%;max-width:100%;max-height:100%;object-fit:contain;background:#000;border:0;outline:none}
+.top-bar{position:absolute;top:0;left:0;right:0;display:flex;flex-direction:column;padding:calc(10px + env(safe-area-inset-top, 0px)) 14px 10px;background:linear-gradient(180deg,#000000 0%,rgba(0,0,0,0.92) 54%,rgba(0,0,0,0.6) 82%,transparent 100%);z-index:30;transition:opacity .25s ease}
 .top-row{display:flex;align-items:center;justify-content:space-between;width:100%;gap:8px}
 .top-left{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
 .top-right{display:flex;align-items:center;gap:6px;flex-shrink:0}
 .title-btn{background:transparent;border:0;padding:0;font-size:14px;font-weight:700;color:var(--text-main);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:32px;cursor:pointer;text-align:left;font-family:inherit}
-.sub-bar{display:flex;align-items:center;gap:8px;margin-top:6px;padding-left:42px}
+.sub-bar{display:flex;align-items:center;gap:8px;margin-top:6px;padding-left:4px}
 .pill-btn{background:var(--tile-bg);border:0;color:var(--text-main);border-radius:8px;padding:6px 12px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:5px;cursor:pointer;outline:none;line-height:normal;white-space:nowrap;box-shadow:0 8px 24px rgba(0,0,0,0.4);transition:transform .12s ease,background .15s ease;font-family:inherit}
 .pill-btn:active{transform:scale(0.92);background:rgba(255,255,255,0.38);color:#ffffff}
 .pill-btn.room-active{background:rgba(16,185,129,0.32);border:1px solid rgba(16,185,129,0.6)}
@@ -37,26 +32,22 @@ body.mode-surface.surface-paused .surface-mask-top,body.mode-surface.surface-pau
 .c-play{width:70px;height:70px;background:rgba(28,28,32,0.92);backdrop-filter:blur(8px)}
 .c-btn svg{width:24px;height:24px;fill:currentColor}
 .c-play svg{width:32px;height:32px;fill:currentColor}
-.bottom-bar{position:absolute;left:0;right:0;bottom:0;display:flex;flex-direction:column;gap:6px;padding:12px 14px calc(10px + env(safe-area-inset-bottom, 0px));background:linear-gradient(0deg,#000000 0%,rgba(0,0,0,0.97) 64%,rgba(0,0,0,0.68) 86%,transparent 100%);z-index:30;transition:opacity .25s ease}
+.bottom-bar{position:absolute;left:0;right:0;bottom:0;display:flex;flex-direction:column;gap:6px;padding:12px 14px calc(10px + env(safe-area-inset-bottom, 0px));background:linear-gradient(0deg,#000000 0%,rgba(0,0,0,0.95) 64%,rgba(0,0,0,0.6) 86%,transparent 100%);z-index:30;transition:opacity .25s ease}
 .timeline-box{position:relative;width:100%;height:20px;display:flex;align-items:center;cursor:pointer}
 .timeline-track{position:absolute;left:0;right:0;height:4px;background:rgba(255,255,255,0.18);border-radius:2px;pointer-events:none}
-.timeline-buffer{position:absolute;left:0;height:4px;background:rgba(255,255,255,0.42);border-radius:2px;width:0%;pointer-events:none;transition:width .12s linear}
-.timeline-played{position:absolute;left:0;height:4px;background:#ffffff;border-radius:2px;width:0%;pointer-events:none}
+.timeline-buffer{position:absolute;left:0;height:4px;background:rgba(255,255,255,0.38);border-radius:2px;width:0%;pointer-events:none;transition:width .12s linear}
+.timeline-played{position:absolute;left:0;height:4px;background:var(--accent-green);border-radius:2px;width:0%;pointer-events:none}
 .timeline-seek{position:absolute;left:0;right:0;width:100%;height:20px;margin:0;padding:0;background:transparent;outline:none;border:0;-webkit-appearance:none;appearance:none;cursor:pointer;z-index:2}
 .timeline-seek::-webkit-slider-runnable-track{height:20px;background:transparent;border:0}
-.timeline-seek::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;background:#ffffff;border:0;outline:none;margin-top:3px;box-shadow:0 1px 4px rgba(0,0,0,0.6)}
-.timeline-seek::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#ffffff;border:0;box-shadow:0 1px 4px rgba(0,0,0,0.6)}
+.timeline-seek::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;background:#ffffff;border:0;outline:none;margin-top:3px;box-shadow:0 1px 4px rgba(0,0,0,0.8)}
 .b-row{display:flex;align-items:center;justify-content:space-between;height:28px}
-.time-lbl{font-size:13px;font-variant-numeric:tabular-nums;color:var(--text-main);font-weight:700;display:inline-flex;align-items:center;height:28px;line-height:28px;letter-spacing:0.3px}
+.time-lbl{font-size:13px;font-variant-numeric:tabular-nums;color:var(--text-main);font-weight:700;display:inline-flex;align-items:center;height:28px;line-height:28px}
 .b-actions{display:flex;align-items:center;gap:8px;height:28px}
-.skip-btn{width:34px;height:28px;border-radius:7px;background:var(--tile-bg);border:0;color:var(--text-main);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;line-height:1;font-weight:700;box-shadow:0 8px 24px rgba(0,0,0,0.4);transition:transform .12s ease,background .15s ease}
+.skip-btn{width:36px;height:28px;border-radius:7px;background:var(--tile-bg);border:0;color:var(--text-main);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-size:12px;font-weight:700;box-shadow:0 8px 24px rgba(0,0,0,0.4);transition:transform .12s ease,background .15s ease}
 .skip-btn:active{transform:scale(0.92);background:rgba(255,255,255,0.38)}
-.pip-btn{width:32px;height:28px;border-radius:7px;background:var(--tile-bg);border:0;color:var(--text-main);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,0.4);transition:transform .12s ease,background .15s ease}
-.pip-btn:active{transform:scale(0.92);background:rgba(255,255,255,0.38)}
-.fs-btn{width:28px;height:28px;border-radius:7px;background:var(--tile-bg);border:0;color:var(--text-main);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,0.4);transition:transform .12s ease,background .15s ease}
-.fs-btn:active{transform:scale(0.92);background:rgba(255,255,255,0.38)}
-.toast{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--panel-bg);border:0;padding:10px 18px;border-radius:10px;font-size:12px;font-weight:600;text-align:center;max-width:86%;z-index:45;box-shadow:0 10px 25px rgba(0,0,0,0.85);display:none}
-.badge{position:absolute;top:18%;left:50%;transform:translateX(-50%);background:var(--panel-bg);border:0;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;display:none;pointer-events:none;z-index:40}
+.pip-btn,.fs-btn{width:30px;height:28px;border-radius:7px;background:var(--tile-bg);border:0;color:var(--text-main);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,0.4);transition:transform .12s ease,background .15s ease}
+.toast{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--panel-bg);border:1px solid rgba(255,255,255,0.1);padding:10px 18px;border-radius:10px;font-size:12px;font-weight:600;text-align:center;max-width:86%;z-index:45;box-shadow:0 10px 25px rgba(0,0,0,0.85);display:none}
+.badge{position:absolute;top:18%;left:50%;transform:translateX(-50%);background:var(--panel-bg);border:1px solid rgba(255,255,255,0.1);padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;display:none;pointer-events:none;z-index:40}
 .modal-bg{position:absolute;inset:0;background:rgba(0,0,0,0.85);backdrop-filter:blur(4px);z-index:60;display:none;align-items:flex-end;justify-content:center}
 .modal-bg.centered{align-items:center;padding:16px}
 .modal-sheet{width:100%;max-width:440px;background:var(--sheet-bg);border-top-left-radius:18px;border-top-right-radius:18px;border:0;padding:16px;max-height:82%;display:flex;flex-direction:column;box-shadow:0 20px 40px rgba(0,0,0,0.85)}
@@ -66,43 +57,33 @@ body.mode-surface.surface-paused .surface-mask-top,body.mode-surface.surface-pau
 .modal-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;overflow-y:auto;padding:10px 0;max-height:48vh}
 .ep-tile{padding:10px 4px;font-size:11px;font-weight:700;text-align:center;background:var(--tile-bg);border:0;color:var(--text-main);border-radius:8px;cursor:pointer}
 .ep-tile.active{background:#ffffff;color:#121212;box-shadow:0 4px 14px rgba(255,255,255,0.3)}
-.dropdown{position:absolute;background:rgba(28,28,30,0.96);border:0;border-radius:10px;padding:4px;z-index:70;display:none;flex-direction:column;box-shadow:0 12px 30px rgba(0,0,0,0.9);max-height:242px;overflow-y:auto}
+.dropdown{position:absolute;background:rgba(28,28,30,0.96);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:4px;z-index:70;display:none;flex-direction:column;box-shadow:0 12px 30px rgba(0,0,0,0.9);max-height:242px;overflow-y:auto}
 .drop-item{padding:8px 14px;font-size:12px;font-weight:600;color:var(--text-main);background:transparent;border:0;text-align:left;cursor:pointer;border-radius:6px;font-variant-numeric:tabular-nums}
 .drop-item.active{color:#121212;background:#ffffff}
-.lock-unlock-btn{position:absolute;top:calc(10px + env(safe-area-inset-top, 0px));right:14px;height:32px;background:var(--tile-bg);border:0;color:#fff;padding:0 14px;border-radius:8px;font-size:12px;font-weight:700;z-index:80;display:none;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,0.4);transition:transform .12s ease,background .15s ease}
-.lock-unlock-btn:active{transform:scale(0.92);background:rgba(255,255,255,0.38)}
+.lock-unlock-btn{position:absolute;top:calc(10px + env(safe-area-inset-top, 0px));right:14px;height:32px;background:var(--tile-bg);border:0;color:#fff;padding:0 14px;border-radius:8px;font-size:12px;font-weight:700;z-index:80;display:none;align-items:center;justify-content:center;cursor:pointer}
 .form-group{display:flex;flex-direction:column;gap:6px;margin-top:12px}
 .form-label{font-size:12px;font-weight:600;color:var(--text-sub)}
 .form-input{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:10px;padding:10px 14px;color:#fff;font-size:14px;outline:none}
 .form-input:focus{border-color:rgba(255,255,255,0.5)}
-.form-err{font-size:12px;color:#f87171;margin-top:4px;display:none}
 .action-btn{background:#ffffff;color:#121212;border:0;border-radius:10px;padding:12px;font-size:13px;font-weight:700;cursor:pointer;outline:none;margin-top:16px}
 .action-btn.secondary{background:rgba(255,255,255,0.15);color:#fff;margin-top:8px}
 .action-btn.danger{background:rgba(239,68,68,0.25);color:#fca5a5;border:1px solid rgba(239,68,68,0.4)}
-.room-link-box{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.06);padding:8px 12px;border-radius:10px;margin-top:12px;border:1px dashed rgba(255,255,255,0.2)}
-.room-link-text{flex:1;font-size:12px;color:var(--text-sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.copy-btn{background:var(--tile-bg);border:0;color:#fff;border-radius:6px;padding:6px 10px;font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0}
-.user-list{display:flex;flex-direction:column;gap:8px;max-height:220px;overflow-y:auto;margin-top:14px}
-.user-item{display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,0.06);padding:8px 12px;border-radius:8px;gap:8px}
-.user-name{font-size:12px;font-weight:600;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.user-actions{display:flex;align-items:center;gap:6px;flex-shrink:0}
-.btn-sm{padding:4px 8px;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;border:0}
-.btn-promote{background:rgba(59,130,246,0.3);color:#bfdbfe}
-.btn-kick{background:rgba(239,68,68,0.3);color:#fecaca}
+.search-results{display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto;margin-top:10px}
+.search-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.06);cursor:pointer;text-align:left}
+.search-item:hover{background:rgba(255,255,255,0.12)}
+.search-poster{width:36px;height:50px;object-fit:cover;border-radius:4px;background:#27272a;flex-shrink:0}
+.search-info{display:flex;flex-direction:column;min-width:0;flex:1}
+.search-title{font-size:13px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.search-meta{font-size:11px;color:var(--text-sub)}
 body.hud-off .top-bar,body.hud-off .center-ctrls,body.hud-off .bottom-bar{opacity:0;pointer-events:none}
 body.locked .top-bar,body.locked .center-ctrls,body.locked .bottom-bar{display:none!important}
-body.mode-surface #qualityBtn{display:none!important}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.17/hls.light.min.js"></script>
-<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
 <body>
 <div class="app" id="appRoot">
   <div class="stage" id="stage">
     <video id="vid" playsinline preload="auto"></video>
-    <div class="surface-curtain" id="surfaceCurtain"></div>
-    <div class="surface-mask-top"></div>
-    <div class="surface-mask-bottom"></div>
     <div class="toast" id="toast"></div>
     <div class="badge" id="badge"></div>
     <button type="button" class="lock-unlock-btn" id="unlockBtn">Разблокировать экран</button>
@@ -110,15 +91,15 @@ body.mode-surface #qualityBtn{display:none!important}
     <div class="top-bar" id="topBar">
       <div class="top-row">
         <div class="top-left">
-          <button type="button" class="icon-btn" id="backBtn" aria-label="Сменить источник видео">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+          <button type="button" class="icon-btn" id="searchBtn" aria-label="Поиск">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
           </button>
           <button type="button" class="title-btn" id="titleLbl">Загрузка...</button>
         </div>
         <div class="top-right">
           <button type="button" class="pill-btn" id="roomBtn">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            <span id="roomBtnLbl">Создать комнату</span>
+            <span id="roomBtnLbl">Комната</span>
           </button>
           <button type="button" class="pill-btn" id="speedBtn"><span id="speedLbl">1x</span><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
           <button type="button" class="pill-btn" id="qualityBtn"><span id="qualityLbl">720p</span><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
@@ -149,12 +130,12 @@ body.mode-surface #qualityBtn{display:none!important}
       <div class="b-row">
         <span class="time-lbl" id="timeLbl">00:00 / 00:00</span>
         <div class="b-actions">
-          <button type="button" class="skip-btn" id="skip125Btn" title="Пропуск 1:25">»</button>
-          <button type="button" class="pip-btn" id="miniPipBtn" aria-label="Картинка в картинке">
+          <button type="button" class="skip-btn" id="skip85Btn" title="Пропуск опенинга">+85с</button>
+          <button type="button" class="pip-btn" id="pipBtn" aria-label="Картинка в картинке">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><rect x="12" y="11" width="7" height="6" rx="1" fill="currentColor" stroke="none"/></svg>
           </button>
           <button type="button" class="fs-btn" id="fsBtn" aria-label="Полный экран">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 2 2h3"/></svg>
           </button>
         </div>
       </div>
@@ -163,81 +144,16 @@ body.mode-surface #qualityBtn{display:none!important}
     <div class="dropdown" id="speedDrop"></div>
     <div class="dropdown" id="qualityDrop"></div>
 
-    <div class="modal-bg centered" id="createRoomModal">
+    <div class="modal-bg centered" id="searchModal">
       <div class="modal-sheet">
         <div class="modal-hdr">
-          <span class="modal-title">Создать комнату совместного просмотра</span>
-          <button type="button" class="pill-btn" id="closeCreateRoomBtn" aria-label="Закрыть"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          <span class="modal-title">Поиск тайтла или ссылка Kodik</span>
+          <button type="button" class="pill-btn" id="closeSearchBtn" aria-label="Закрыть"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
         </div>
         <div class="form-group">
-          <label class="form-label" for="createNickInput">Ваше имя (обязательно):</label>
-          <input class="form-input" id="createNickInput" type="text" placeholder="Например: Иван" maxlength="24">
-          <div class="form-err" id="createRoomErr">Укажите ваше имя</div>
+          <input class="form-input" id="searchKeywordInput" type="text" placeholder="Название, ссылка Kodik или shiki:2472">
         </div>
-        <div class="form-group">
-          <label class="form-label" for="createPassInput">Пароль комнаты (необязательно):</label>
-          <input class="form-input" id="createPassInput" type="password" placeholder="Оставьте пустым, если без пароля">
-        </div>
-        <button type="button" class="action-btn" id="startRoomSubmitBtn">Открыть сервер комнаты</button>
-        <button type="button" class="action-btn secondary" id="switchToJoinBtn">Войти в существующую по ID</button>
-      </div>
-    </div>
-
-    <div class="modal-bg centered" id="joinRoomModal">
-      <div class="modal-sheet">
-        <div class="modal-hdr">
-          <span class="modal-title">Вход в комнату</span>
-          <button type="button" class="pill-btn" id="closeJoinRoomBtn" aria-label="Закрыть"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
-        </div>
-        <div class="form-group">
-          <label class="form-label" for="joinRoomIdInput">ID комнаты:</label>
-          <input class="form-input" id="joinRoomIdInput" type="text" placeholder="room-xxxxxx">
-        </div>
-        <div class="form-group">
-          <label class="form-label" for="joinNickInput">Ваше имя (обязательно):</label>
-          <input class="form-input" id="joinNickInput" type="text" placeholder="Введите никнейм" maxlength="24">
-        </div>
-        <div class="form-group">
-          <label class="form-label" for="joinPassInput">Пароль комнаты (если установлен):</label>
-          <input class="form-input" id="joinPassInput" type="password" placeholder="Введите пароль">
-        </div>
-        <div class="form-err" id="joinRoomErr">Проверьте ID комнаты и имя</div>
-        <button type="button" class="action-btn" id="connectRoomSubmitBtn">Подключиться к просмотру</button>
-      </div>
-    </div>
-
-    <div class="modal-bg centered" id="manageRoomModal">
-      <div class="modal-sheet">
-        <div class="modal-hdr">
-          <span class="modal-title" id="manageModalTitle">Комната просмотра</span>
-          <button type="button" class="pill-btn" id="closeManageRoomBtn" aria-label="Закрыть"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
-        </div>
-        <div class="room-link-box">
-          <span class="room-link-text" id="roomLinkDisplay"></span>
-          <button type="button" class="copy-btn" id="copyRoomLinkBtn">Скопировать</button>
-        </div>
-        <div class="form-label" style="margin-top:12px">Участники онлайн:</div>
-        <div class="user-list" id="roomUsersList"></div>
-        <button type="button" class="action-btn danger" id="leaveRoomBtn">Выйти из комнаты</button>
-      </div>
-    </div>
-
-    <div class="modal-bg centered" id="sourceModal">
-      <div class="modal-sheet">
-        <div class="modal-hdr">
-          <span class="modal-title">Открыть видео или найти релиз</span>
-          <button type="button" class="pill-btn" id="closeSourceBtn" aria-label="Закрыть"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
-        </div>
-        <div class="form-group">
-          <label class="form-label" for="sourceUrlInput">Ссылка Kodik / HLS, ID (shiki:2472, kp:301) или название:</label>
-          <input class="form-input" id="sourceUrlInput" type="text" placeholder="https://kodikplayer.com/seria/... или Наруто">
-          <div class="form-err" id="sourceErr">Укажите ссылку или поисковый запрос</div>
-        </div>
-        <div class="form-group">
-          <label class="form-label" for="sourceTitleInput">Своё название (необязательно):</label>
-          <input class="form-input" id="sourceTitleInput" type="text" placeholder="Определяется автоматически">
-        </div>
-        <button type="button" class="action-btn" id="loadSourceSubmitBtn">Смотреть в плеере</button>
+        <div class="search-results" id="searchResultsContainer"></div>
       </div>
     </div>
 
@@ -260,26 +176,47 @@ body.mode-surface #qualityBtn{display:none!important}
         <div class="modal-grid" style="grid-template-columns:1fr;max-height:45vh" id="voiceList"></div>
       </div>
     </div>
+
+    <div class="modal-bg centered" id="roomModal">
+      <div class="modal-sheet">
+        <div class="modal-hdr">
+          <span class="modal-title" id="roomModalHeader">Совместный просмотр</span>
+          <button type="button" class="pill-btn" id="closeRoomModalBtn" aria-label="Закрыть"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+        </div>
+        <div id="roomCreateView">
+          <div class="form-group">
+            <label class="form-label" for="roomNickInput">Ваше имя:</label>
+            <input class="form-input" id="roomNickInput" type="text" placeholder="Введите никнейм" maxlength="24">
+          </div>
+          <button type="button" class="action-btn" id="createRoomBtn">Создать новую комнату</button>
+          <div class="form-group" style="margin-top:14px">
+            <label class="form-label" for="joinRoomInput">Или войти по ID комнаты:</label>
+            <input class="form-input" id="joinRoomInput" type="text" placeholder="room-xxxxxx">
+          </div>
+          <button type="button" class="action-btn secondary" id="joinRoomBtn">Войти в комнату</button>
+        </div>
+        <div id="roomManageView" style="display:none">
+          <div class="form-group">
+            <label class="form-label">Ссылка для друзей:</label>
+            <input class="form-input" id="roomLinkInput" readonly>
+          </div>
+          <button type="button" class="action-btn secondary" id="copyLinkBtn">Скопировать ссылку</button>
+          <div class="form-label" style="margin-top:12px">Участники онлайн:</div>
+          <div id="roomUsersBox" style="display:flex;flex-direction:column;gap:6px;max-height:160px;overflow-y:auto;margin-top:6px"></div>
+          <button type="button" class="action-btn danger" id="leaveRoomBtn">Выйти из комнаты</button>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 <script>
 (function(){
   var PLAY_SVG='<path d="M8 5v14l11-7z"/>';
   var PAUSE_SVG='<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
-  var FS_EXPAND_SVG='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>';
-  var FS_COMPRESS_SVG='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>';
   var LOCK_OPEN_SVG='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>';
   var LOCK_CLOSED_SVG='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
 
-  var PROTO_HTTP='http:';
-  var PROTO_HTTPS='https:';
-  var SLASH_PAIR=String.fromCharCode(47,47);
-  var KODIK_API_URLS=[PROTO_HTTPS+SLASH_PAIR+'kodik-api.com/search',PROTO_HTTPS+SLASH_PAIR+'kodikapi.com/search'];
-  var REGISTRY_TOKENS_URL=PROTO_HTTPS+SLASH_PAIR+'raw.githubusercontent.com/YaNesyTortiK/AnimeParsers/refs/heads/main/kdk_tokns/tokens.json';
-  var PUBLIC_FALLBACK_TOKENS=['56a768d38f43091683c17c91779f0d02','09949988225e3474d28971f496350d75','895781a7d6560965d1d60ea4db22f254'];
-  var LOCAL_EXTERA_API=PROTO_HTTP+SLASH_PAIR+'127.0.0.1:18420';
-
-  var vid=document.getElementById('vid'),surfaceCurtain=document.getElementById('surfaceCurtain'),toast=document.getElementById('toast'),badge=document.getElementById('badge'),stage=document.getElementById('stage');
+  var vid=document.getElementById('vid'),toast=document.getElementById('toast'),badge=document.getElementById('badge'),stage=document.getElementById('stage');
   var titleLbl=document.getElementById('titleLbl'),epCurLbl=document.getElementById('epCurLbl'),voiceCurLbl=document.getElementById('voiceCurLbl');
   var epPickerBtn=document.getElementById('epPickerBtn'),voicePickerBtn=document.getElementById('voicePickerBtn');
   var speedBtn=document.getElementById('speedBtn'),speedLbl=document.getElementById('speedLbl'),speedDrop=document.getElementById('speedDrop');
@@ -287,579 +224,88 @@ body.mode-surface #qualityBtn{display:none!important}
   var lockBtn=document.getElementById('lockBtn'),unlockBtn=document.getElementById('unlockBtn');
   var cPrevBtn=document.getElementById('cPrevBtn'),cPlayBtn=document.getElementById('cPlayBtn'),cNextBtn=document.getElementById('cNextBtn'),playIcon=document.getElementById('playIcon');
   var seek=document.getElementById('seek'),timelineBuffer=document.getElementById('timelineBuffer'),timelinePlayed=document.getElementById('timelinePlayed');
-  var timeLbl=document.getElementById('timeLbl'),skip125Btn=document.getElementById('skip125Btn');
-  var miniPipBtn=document.getElementById('miniPipBtn'),fsBtn=document.getElementById('fsBtn'),backBtn=document.getElementById('backBtn');
+  var timeLbl=document.getElementById('timeLbl'),skip85Btn=document.getElementById('skip85Btn'),pipBtn=document.getElementById('pipBtn'),fsBtn=document.getElementById('fsBtn');
+  var searchBtn=document.getElementById('searchBtn'),searchModal=document.getElementById('searchModal'),closeSearchBtn=document.getElementById('closeSearchBtn'),searchKeywordInput=document.getElementById('searchKeywordInput'),searchResultsContainer=document.getElementById('searchResultsContainer');
   var epModal=document.getElementById('epModal'),epCloseBtn=document.getElementById('epCloseBtn'),epGrid=document.getElementById('epGrid');
   var voiceModal=document.getElementById('voiceModal'),voiceCloseBtn=document.getElementById('voiceCloseBtn'),voiceList=document.getElementById('voiceList');
+  var roomBtn=document.getElementById('roomBtn'),roomBtnLbl=document.getElementById('roomBtnLbl'),roomModal=document.getElementById('roomModal'),closeRoomModalBtn=document.getElementById('closeRoomModalBtn'),roomModalHeader=document.getElementById('roomModalHeader');
+  var roomCreateView=document.getElementById('roomCreateView'),roomManageView=document.getElementById('roomManageView'),roomNickInput=document.getElementById('roomNickInput'),createRoomBtn=document.getElementById('createRoomBtn'),joinRoomInput=document.getElementById('joinRoomInput'),joinRoomBtn=document.getElementById('joinRoomBtn');
+  var roomLinkInput=document.getElementById('roomLinkInput'),copyLinkBtn=document.getElementById('copyLinkBtn'),roomUsersBox=document.getElementById('roomUsersBox'),leaveRoomBtn=document.getElementById('leaveRoomBtn');
 
-  var roomBtn=document.getElementById('roomBtn');
-  var createRoomModal=document.getElementById('createRoomModal'),closeCreateRoomBtn=document.getElementById('closeCreateRoomBtn'),createNickInput=document.getElementById('createNickInput'),createPassInput=document.getElementById('createPassInput'),createRoomErr=document.getElementById('createRoomErr'),startRoomSubmitBtn=document.getElementById('startRoomSubmitBtn'),switchToJoinBtn=document.getElementById('switchToJoinBtn');
-  var joinRoomModal=document.getElementById('joinRoomModal'),closeJoinRoomBtn=document.getElementById('closeJoinRoomBtn'),joinRoomIdInput=document.getElementById('joinRoomIdInput'),joinNickInput=document.getElementById('joinNickInput'),joinPassInput=document.getElementById('joinPassInput'),joinRoomErr=document.getElementById('joinRoomErr'),connectRoomSubmitBtn=document.getElementById('connectRoomSubmitBtn');
-  var manageRoomModal=document.getElementById('manageRoomModal'),closeManageRoomBtn=document.getElementById('closeManageRoomBtn'),manageModalTitle=document.getElementById('manageModalTitle'),roomLinkDisplay=document.getElementById('roomLinkDisplay'),copyRoomLinkBtn=document.getElementById('copyRoomLinkBtn'),roomUsersList=document.getElementById('roomUsersList'),leaveRoomBtn=document.getElementById('leaveRoomBtn');
-  var sourceModal=document.getElementById('sourceModal'),closeSourceBtn=document.getElementById('closeSourceBtn'),sourceUrlInput=document.getElementById('sourceUrlInput'),sourceTitleInput=document.getElementById('sourceTitleInput'),sourceErr=document.getElementById('sourceErr'),loadSourceSubmitBtn=document.getElementById('loadSourceSubmitBtn');
+  var hls=null,ctxData=null,vIdx=0,eIdx=0,currentSrc='',cleanTitle='',rate=1.0,isLocked=false,hudTimer=null,badgeTimer=null,isSeeking=false;
+  var SPEEDS=[0.25,0.5,0.75,1.0,1.25,1.5,1.75,2.0,2.5,3.0,4.0];
+  var roomState={active:false,id:'',role:'viewer',users:[],ws:null,myId:''};
 
-  var iframeRegex=new RegExp('<iframe[^>]+src=["\']([^"\']+)["\']','i');
-  var httpSchemeRegex=new RegExp('^https?:'+SLASH_PAIR,'i');
-  var bareHostRegex=new RegExp('^[a-z0-9.-]+\\.[a-z]{2,}\\/','i');
-
-  function normalizeSrc(raw){
-    var cur=(raw||'').trim();
-    if(!cur)return '';
-    var m=cur.match(iframeRegex);
-    if(m&&m[1])cur=m[1].trim();
-    for(var i=0;i<5;i++){
-      if(cur.indexOf(SLASH_PAIR)===0)cur=PROTO_HTTPS+cur;
-      else if(!httpSchemeRegex.test(cur)&&bareHostRegex.test(cur))cur=PROTO_HTTPS+SLASH_PAIR+cur;
-      try{
-        var u=new URL(cur);
-        var inner=u.searchParams.get('src')||u.searchParams.get('url')||u.searchParams.get('link');
-        if(inner&&inner.trim()&&inner.trim()!==cur){cur=inner.trim();continue;}
-      }catch(e){
-        try{
-          var dec=decodeURIComponent(cur);
-          if(dec!==cur&&(dec.indexOf('http')===0||dec.indexOf(SLASH_PAIR)===0)){cur=dec.trim();continue;}
-        }catch(err){break;}
-      }
-      break;
+  function sanitizeTitle(raw){
+    if(!raw)return '';
+    var str=String(raw).trim();
+    str=str.replace(/\[[^\]]*?(сери|эп|сезон|из|озвуч|sub|voice|дубл|закадр|anilib|anidub)[^\]]*?\]/gi,'');
+    str=str.replace(/\([^)]*?(сери|эп|сезон|из|озвуч|sub|voice|дубл|закадр|тв-\d+|фильм|ova|ona)[^)]*?\)/gi,'');
+    if(str.indexOf('/')!==-1){
+      var parts=str.split('/');
+      if(parts[0].trim().length>=2)str=parts[0].trim();
     }
-    if(cur.indexOf(SLASH_PAIR)===0)cur=PROTO_HTTPS+cur;
-    else if(!httpSchemeRegex.test(cur)&&bareHostRegex.test(cur))cur=PROTO_HTTPS+SLASH_PAIR+cur;
-    if(cur.indexOf('test-streams.mux.dev')!==-1||cur.indexOf('x36xhzz.m3u8')!==-1)return '';
-    return cur;
+    str=str.replace(/\s+(?:\d+\s+сезон|сезон\s+\d+)\s*$/i,'');
+    str=str.replace(/[()[\]{}]/g,' ').replace(/\s+/g,' ').trim();
+    return str||raw.trim();
   }
 
-  function stripScheme(url){
-    var c=(url||'').trim();
-    if(c.indexOf(PROTO_HTTPS)===0)return c.slice(6);
-    if(c.indexOf(PROTO_HTTP)===0)return c.slice(5);
-    return c;
+  function fmtTime(sec){
+    if(!sec||isNaN(sec)||sec<0)return '00:00';
+    var t=Math.floor(sec),h=Math.floor(t/3600),m=Math.floor((t%3600)/60),s=t%60;
+    var mm=m<10?'0'+m:String(m),ss=s<10?'0'+s:String(s);
+    return h>0?(h+':'+mm+':'+ss):(mm+':'+ss);
   }
 
-  function isDirectStream(url){
-    if(!url)return false;
-    var base=url.split('?')[0].toLowerCase();
-    return base.slice(-5)==='.m3u8'||base.slice(-4)==='.mp4'||base.slice(-5)==='.webm'||url.indexOf(':hls:manifest.m3u8')!==-1;
+  function flash(t){
+    badge.textContent=t;badge.style.display='block';
+    if(badgeTimer)clearTimeout(badgeTimer);
+    badgeTimer=setTimeout(function(){badge.style.display='none';},1000);
   }
-
-  function buildSurfaceUrl(embedUrl,resumeAt){
-    var clean=normalizeSrc(embedUrl);
-    if(!clean)return '';
-    try{
-      var u=new URL(clean);
-      u.searchParams.set('hide_selectors','true');
-      u.searchParams.delete('autoplay');
-      if(resumeAt>1)u.searchParams.set('start_from',String(Math.floor(resumeAt)));
-      return u.toString();
-    }catch(e){
-      var sep=clean.indexOf('?')!==-1?'&':'?';
-      var resParam=resumeAt>1?('&start_from='+Math.floor(resumeAt)):'';
-      return clean+sep+'hide_selectors=true'+resParam;
-    }
-  }
-
-  function decodeRegistryTok(enc){
-    var raw=(enc||'').trim();
-    if(!raw||raw.length<4)return '';
-    var half=Math.floor(raw.length/2);
-    function rev(s){return s.split('').reverse().join('');}
-    function b64(s){var c=s.replace(/[^A-Za-z0-9+/=]/g,'');var p=(4-(c.length%4))%4;return atob(c+'===='.slice(0,p));}
-    return b64(rev(raw.slice(half)))+b64(rev(raw.slice(0,half)));
-  }
-
-  var cachedClientGroups={};
-
-  function compareNat(a,b){
-    var ta=String(a).trim(),tb=String(b).trim();
-    var ad=/^\d+$/.test(ta),bd=/^\d+$/.test(tb);
-    if(ad&&bd)return parseInt(ta,10)-parseInt(tb,10);
-    if(ad!==bd)return ad?-1:1;
-    return ta.toLowerCase().localeCompare(tb.toLowerCase());
-  }
-
-  function extractEpisodesFromEntry(entry){
-    var list=[];
-    if(entry&&entry.seasons&&typeof entry.seasons==='object'){
-      var sKeys=Object.keys(entry.seasons).sort(compareNat);
-      for(var i=0;i<sKeys.length;i++){
-        var sKey=sKeys[i],sObj=entry.seasons[sKey];
-        var eps=sObj&&sObj.episodes;
-        if(!eps||typeof eps!=='object')continue;
-        var eKeys=Object.keys(eps).sort(compareNat);
-        for(var j=0;j<eKeys.length;j++){
-          var eKey=eKeys[j],val=eps[eKey];
-          var lnk=typeof val==='string'?val:(val&&val.link?val.link:'');
-          var norm=normalizeSrc(lnk);
-          if(norm)list.push({s:String(sKey),e:String(eKey),label:eKey+' серия',link:norm});
-        }
-      }
-    }
-    if(!list.length&&entry&&entry.link){
-      var fb=normalizeSrc(entry.link);
-      if(fb)list.push({s:String(entry.last_season||'1'),e:String(entry.last_episode||'1'),label:'1 серия',link:fb});
-    }
-    return list;
-  }
-
-  function formatTrLabel(entry){
-    var tr=(entry&&entry.translation)||{};
-    var title=String(tr.title||'Озвучка').trim();
-    var rawType=String(tr.type||'').trim().toLowerCase();
-    var tLabel=rawType==='voice'?'Озвучка':(rawType==='subtitles'?'Субтитры':(rawType||'Перевод'));
-    var meta=[tLabel];
-    if(entry.quality)meta.push(String(entry.quality).trim());
-    if(entry.episodes_count!==undefined&&entry.episodes_count!==null)meta.push('эп: '+entry.episodes_count);
-    return title+' ('+meta.join(' • ')+')';
-  }
-
-  function groupKodikEntries(items){
-    var map={},order=[];
-    for(var i=0;i<(items||[]).length;i++){
-      var ent=items[i];
-      if(!ent||typeof ent!=='object')continue;
-      var shiki=String(ent.shikimori_id||'').trim();
-      var kp=String(ent.kinopoisk_id||'').trim();
-      var imdb=String(ent.imdb_id||'').trim();
-      var mdl=String(ent.mdl_id||'').trim();
-      var tRu=String(ent.title||'').trim();
-      var tOrig=String(ent.title_orig||'').trim();
-      var gk,spec;
-      if(shiki){gk='shiki:'+shiki;spec={mode:'shikimori_id',value:shiki};}
-      else if(kp){gk='kp:'+kp;spec={mode:'kinopoisk_id',value:kp};}
-      else if(imdb){gk='imdb:'+imdb;spec={mode:'imdb_id',value:imdb};}
-      else if(mdl){gk='mdl:'+mdl;spec={mode:'mdl_id',value:mdl};}
-      else{gk='title:'+(tOrig||tRu||ent.id||'').toLowerCase();spec={mode:'title',value:tRu||tOrig};}
-      if(!map[gk]){
-        map[gk]={group_key:gk,lookup_spec:spec,title:tRu||tOrig||'Kodik',variants:[]};
-        order.push(map[gk]);
-      }
-      map[gk].variants.push(ent);
-    }
-    for(var k=0;k<order.length;k++)cachedClientGroups[order[k].group_key]=order[k];
-    return order;
-  }
-
-  function serializeClientGroup(grp,vi,targetSrc){
-    var rawVars=grp.variants||[];
-    var normT=stripScheme(normalizeSrc(targetSrc||''));
-    var cV=rawVars.length?Math.max(0,Math.min(vi||0,rawVars.length-1)):0,cE=0;
-    var outVars=[];
-    for(var i=0;i<rawVars.length;i++){
-      var ent=rawVars[i],eps=extractEpisodesFromEntry(ent);
-      if(normT){
-        if(ent.link&&stripScheme(normalizeSrc(ent.link)).indexOf(normT)!==-1)cV=i;
-        for(var j=0;j<eps.length;j++){
-          if(stripScheme(eps[j].link).indexOf(normT)!==-1){cV=i;cE=j;break;}
-        }
-      }
-      outVars.push({id:String((ent.translation&&ent.translation.id)||i),label:formatTrLabel(ent),episodes:eps});
-    }
-    return {ok:true,group_key:grp.group_key,title:grp.title||'Kodik',variant_idx:cV,ep_idx:cE,variants:outVars};
-  }
-
-  function fetchWithTimeout(url,ms){
-    var ctrl=typeof AbortController!=='undefined'?new AbortController():null;
-    var tid=ctrl?setTimeout(function(){ctrl.abort();},ms):null;
-    return fetch(url,ctrl?{signal:ctrl.signal}:{}).finally(function(){if(tid)clearTimeout(tid);});
-  }
-
-  function getSavedPublicToken(){
-    try{
-      var d=JSON.parse(localStorage.getItem('kp_kodik_public_token_v1')||'{}');
-      if(d.token&&d.ts&&(Date.now()-d.ts)<1200000)return d.token;
-    }catch(e){}
-    return '';
-  }
-
-  function savePublicToken(tok){
-    try{localStorage.setItem('kp_kodik_public_token_v1',JSON.stringify({token:tok,ts:Date.now()}));}catch(e){}
-  }
-
-  function fetchRegistryTokens(){
-    return fetchWithTimeout(REGISTRY_TOKENS_URL,4500).then(function(r){
-      if(!r.ok)return [];
-      return r.json();
-    }).then(function(d){
-      var arr=(d.stable||[]).concat(d.unstable||[]),out=[];
-      for(var i=0;i<arr.length;i++){
-        var enc=arr[i]&&(arr[i].tokn||arr[i].tok);
-        if(!enc)continue;
-        try{var dec=decodeRegistryTok(String(enc));if(dec&&out.indexOf(dec)===-1)out.push(dec);}catch(e){}
-      }
-      return out;
-    }).catch(function(){return [];});
-  }
-
-  function queryKodikWithTokens(tokens,spec){
-    var pairs=[];
-    for(var i=0;i<tokens.length;i++){
-      for(var j=0;j<KODIK_API_URLS.length;j++)pairs.push({tok:tokens[i],ep:KODIK_API_URLS[j]});
-    }
-    var idx=0;
-    function next(){
-      if(idx>=pairs.length)return Promise.resolve(null);
-      var cur=pairs[idx++];
-      var u=new URL(cur.ep);
-      u.searchParams.set('token',cur.tok);
-      u.searchParams.set('limit','35');
-      u.searchParams.set('with_material_data','true');
-      u.searchParams.set('with_episodes','true');
-      u.searchParams.set(spec.mode,spec.value);
-      return fetchWithTimeout(u.toString(),4500).then(function(r){
-        if(!r.ok)return next();
-        return r.json().then(function(p){
-          if(p&&!p.error&&Array.isArray(p.results)){savePublicToken(cur.tok);return p.results;}
-          return next();
-        });
-      }).catch(function(){return next();});
-    }
-    return next();
-  }
-
-  function browserKodikSearch(spec){
-    var pool=[],saved=getSavedPublicToken();
-    if(saved)pool.push(saved);
-    for(var i=0;i<PUBLIC_FALLBACK_TOKENS.length;i++){
-      if(pool.indexOf(PUBLIC_FALLBACK_TOKENS[i])===-1)pool.push(PUBLIC_FALLBACK_TOKENS[i]);
-    }
-    return queryKodikWithTokens(pool,spec).then(function(res){
-      if(res)return res;
-      return fetchRegistryTokens().then(function(fresh){
-        if(!fresh.length)return null;
-        return queryKodikWithTokens(fresh,spec);
-      });
-    });
-  }
-
-  function parseSearchTarget(raw){
-    var c=(raw||'').replace(/\s+/g,' ').trim();
-    if(!c)return null;
-    if(c.indexOf('http')===0||c.indexOf(SLASH_PAIR)===0||c.indexOf('kodik')!==-1){
-      var n=normalizeSrc(c);return n?{mode:'player_link',value:n}:null;
-    }
-    var mShiki=c.match(/^(?:shiki|shikimori|шики)\s*[:=]?\s*(\d+)$/i);
-    if(mShiki)return {mode:'shikimori_id',value:mShiki[1]};
-    var mKp=c.match(/^(?:kp|kinopoisk|кп)\s*[:=]?\s*(\d+)$/i);
-    if(mKp)return {mode:'kinopoisk_id',value:mKp[1]};
-    var mImdb=c.match(/^(?:imdb\s*[:=]?\s*)?(tt\d{5,12})$/i);
-    if(mImdb)return {mode:'imdb_id',value:mImdb[1].toLowerCase()};
-    var mMdl=c.match(/^mdl\s*[:=]?\s*(\S+)$/i);
-    if(mMdl)return {mode:'mdl_id',value:mMdl[1]};
-    return {mode:'title',value:c};
-  }
-
-  function resolveClientContext(opts){
-    var cleanSrc=opts.src?normalizeSrc(opts.src):'';
-    var gk=(opts.gk||'').trim();
-    var q=(opts.q||'').trim();
-    var vi=opts.vi||0;
-
-    if(cleanSrc&&isDirectStream(cleanSrc)){
-      return Promise.resolve({ok:true,group_key:cleanSrc,title:'Прямой поток',variant_idx:0,ep_idx:0,variants:[{id:'direct',label:'Прямой поток',episodes:[{s:'1',e:'1',label:'1 серия',link:cleanSrc}]}]});
-    }
-    if(gk&&cachedClientGroups[gk]){
-      return Promise.resolve(serializeClientGroup(cachedClientGroups[gk],vi,cleanSrc));
-    }
-    if(gk&&gk.indexOf(':')>0){
-      var pfx=gk.slice(0,gk.indexOf(':')),idv=gk.slice(gk.indexOf(':')+1);
-      var mMap={shiki:'shikimori_id',kp:'kinopoisk_id',imdb:'imdb_id',mdl:'mdl_id'};
-      if(mMap[pfx]&&idv){
-        return browserKodikSearch({mode:mMap[pfx],value:idv}).then(function(items){
-          if(!items||!items.length)return null;
-          var grps=groupKodikEntries(items);
-          var hit=cachedClientGroups[gk]||grps[0];
-          return serializeClientGroup(hit,vi,cleanSrc);
-        });
-      }
-    }
-    if(q&&!cleanSrc){
-      var spec=parseSearchTarget(q);
-      if(!spec)return Promise.resolve(null);
-      return browserKodikSearch(spec).then(function(items){
-        if(!items||!items.length)return null;
-        var grps=groupKodikEntries(items),prim=grps[0];
-        if(prim.lookup_spec&&prim.lookup_spec.mode!==spec.mode){
-          return browserKodikSearch(prim.lookup_spec).then(function(exp){
-            if(exp&&exp.length){
-              var eg=groupKodikEntries(exp);
-              prim=cachedClientGroups[prim.group_key]||eg[0]||prim;
-            }
-            return serializeClientGroup(prim,vi,'');
-          });
-        }
-        return serializeClientGroup(prim,vi,'');
-      });
-    }
-    if(cleanSrc){
-      var stripT=stripScheme(cleanSrc);
-      var cKeys=Object.keys(cachedClientGroups);
-      for(var cI=0;cI<cKeys.length;cI++){
-        var cg=cachedClientGroups[cKeys[cI]];
-        for(var vI=0;vI<cg.variants.length;vI++){
-          var ent=cg.variants[vI];
-          if(ent.link&&stripScheme(normalizeSrc(ent.link)).indexOf(stripT)!==-1)return Promise.resolve(serializeClientGroup(cg,vI,cleanSrc));
-          var ceps=extractEpisodesFromEntry(ent);
-          for(var eI=0;eI<ceps.length;eI++){
-            if(stripScheme(ceps[eI].link).indexOf(stripT)!==-1)return Promise.resolve(serializeClientGroup(cg,vI,cleanSrc));
-          }
-        }
-      }
-      return browserKodikSearch({mode:'player_link',value:cleanSrc}).then(function(items){
-        if(!items||!items.length)return null;
-        var grps=groupKodikEntries(items);
-        if(!grps.length)return null;
-        var prim=grps[0];
-        if(prim.lookup_spec){
-          return browserKodikSearch(prim.lookup_spec).then(function(full){
-            if(full&&full.length){
-              var eg=groupKodikEntries(full);
-              prim=cachedClientGroups[prim.group_key]||eg[0]||prim;
-            }
-            return serializeClientGroup(prim,vi,cleanSrc);
-          });
-        }
-        return serializeClientGroup(prim,vi,cleanSrc);
-      });
-    }
-    return Promise.resolve(null);
-  }
-
-  var qParams=new URLSearchParams(window.location.search);
-  var initialRoomId=(qParams.get('room')||'').trim();
-  var initialGk=(qParams.get('gk')||'').trim();
-  var initialVi=parseInt(qParams.get('vi')||'0',10)||0;
-  var customApiBase=(qParams.get('api')||localStorage.getItem('kp_api_base')||'').trim().replace(/\/+$/,'');
-  var currentSrc=normalizeSrc(qParams.get('src')||qParams.get('url')||qParams.get('link')||'');
-  var rawInitTitle=(qParams.get('title')||'').trim();
-  var customTitle=(rawInitTitle&&rawInitTitle!=='Демо Поток')?rawInitTitle:'';
-  var groupKey=initialGk||currentSrc;
-  var isStaticGithubHost=window.location.hostname.slice(-10)==='.github.io';
-
-  var hls=null,ctxData=null,vIdx=initialVi,eIdx=0,streams={},proxyStreams={},curQ='720',rate=1.0,activeIframe=null;
-  var isLocked=false,hudTimer=null,bTimer=null,unlockTimer=null,reqSeq=0,draggingSeek=false,lastReportSec=0;
-  var iframeCurTime=0,iframeDuration=0,iframePaused=true,surfaceBooted=false,pendingSurfaceSeek=0,surfaceInPip=false;
-  var SPEEDS=[0.25,0.5,0.75,1.0,1.25,1.5,1.75,2.0,2.25,2.5,2.75,3.0,3.25,3.5,3.75,4.0];
-
-  var roomState={
-    active:false,isHost:false,isAdmin:false,roomId:'',roomPass:'',myId:'',myNick:'',
-    ws:null,peer:null,peerConns:{},hostConn:null,users:[],ignoreNextSync:false
-  };
-
-  function fmtRate(v){var n=parseFloat(v)||1;return (n%1===0?n.toFixed(0):n.toFixed(2).replace(/0+$/,''))+'x';}
-  function fmtTime(sec){if(!sec||isNaN(sec)||sec<0)return '00:00';var t=Math.floor(sec),h=Math.floor(t/3600),m=Math.floor((t%3600)/60),s=t%60;var mm=m<10?'0'+m:String(m),ss=s<10?'0'+s:String(s);return h>0?(h+':'+mm+':'+ss):(mm+':'+ss);}
-
-  function updatePlayButtonVisual(pausedState){
-    playIcon.innerHTML=pausedState?PLAY_SVG:PAUSE_SVG;
-    document.body.classList.toggle('surface-paused',Boolean(activeIframe&&pausedState));
-  }
-
-  function getCurrentVideoTime(){return activeIframe?(iframeCurTime||0):(vid.currentTime||0);}
-  function getVideoDuration(){return activeIframe?(iframeDuration||0):(vid.duration||0);}
-  function isVideoPaused(){return activeIframe?iframePaused:Boolean(vid.paused);}
-
-  function readProgress(gk){
-    if(!gk)return null;
-    try{var map=JSON.parse(localStorage.getItem('kodik_playback_history_v1')||'{}');return map[gk]||null;}catch(e){return null;}
-  }
-
-  function reportProgress(force){
-    var curSec=getCurrentVideoTime(),durSec=getVideoDuration();
-    if(isNaN(curSec)||curSec<2)return;
-    if(!force&&Math.abs(curSec-lastReportSec)<4.0)return;
-    lastReportSec=curSec;
-    var gk=groupKey||currentSrc;
-    if(!gk)return;
-    try{
-      var map=JSON.parse(localStorage.getItem('kodik_playback_history_v1')||'{}');
-      var eps=((ctxData&&ctxData.variants&&ctxData.variants[vIdx]&&ctxData.variants[vIdx].episodes)||[]);
-      var ep=eps[eIdx]||{};
-      map[gk]={e_idx:eIdx,e:ep.e||'1',s:ep.s||'1',v_idx:vIdx,time:Math.round(curSec*10)/10,dur:Math.round(durSec*10)/10,ts:Math.floor(Date.now()/1000)};
-      localStorage.setItem('kodik_playback_history_v1',JSON.stringify(map));
-    }catch(e){}
-  }
-
-  function syncBrowserUrl(){
-    try{
-      var u=new URL(window.location.href);
-      if(currentSrc)u.searchParams.set('src',currentSrc);else u.searchParams.delete('src');
-      u.searchParams.delete('url');
-      if(customTitle)u.searchParams.set('title',customTitle);else u.searchParams.delete('title');
-      if(roomState.active&&roomState.roomId)u.searchParams.set('room',roomState.roomId);
-      window.history.replaceState(null,'',u.toString());
-    }catch(e){}
-  }
-
-  function updateTimelineProgress(){
-    var cur=getCurrentVideoTime(),dur=getVideoDuration();
-    if(dur>0){
-      var progPct=Math.max(0,Math.min(100,(cur/dur)*100));
-      timelinePlayed.style.width=progPct.toFixed(2)+'%';
-      if(!draggingSeek)seek.value=String(Math.round((cur/dur)*1000));
-      var maxBuf=0;
-      if(!activeIframe&&vid.buffered&&vid.buffered.length>0){
-        for(var i=0;i<vid.buffered.length;i++){
-          if(vid.buffered.start(i)<=cur+1.0&&vid.buffered.end(i)>maxBuf)maxBuf=vid.buffered.end(i);
-        }
-        if(maxBuf===0){for(var j=0;j<vid.buffered.length;j++){if(vid.buffered.end(j)>maxBuf)maxBuf=vid.buffered.end(j);}}
-      }else{maxBuf=cur;}
-      var bufPct=Math.max(progPct,Math.min(100,(maxBuf/dur)*100));
-      timelineBuffer.style.width=bufPct.toFixed(2)+'%';
-    }else{
-      timelinePlayed.style.width='0%';timelineBuffer.style.width='0%';
-      if(!draggingSeek)seek.value='0';
-    }
-  }
-
-  function msg(t,show,allowRetry){
-    if(!show){toast.style.display='none';return;}
-    toast.textContent=t||'';toast.style.display='block';
-    if(allowRetry){toast.onclick=function(){msg('',false);loadCurrent(0);};toast.style.cursor='pointer';}
-    else{toast.onclick=null;toast.style.cursor='default';}
-  }
-
-  function flash(t){badge.textContent=t;badge.style.display='block';if(bTimer)clearTimeout(bTimer);bTimer=setTimeout(function(){badge.style.display='none';},850);}
 
   function wakeHud(){
     if(isLocked)return;
     document.body.classList.remove('hud-off');
     if(hudTimer)clearTimeout(hudTimer);
-    if(!isVideoPaused()){
-      hudTimer=setTimeout(function(){if(!isVideoPaused()){document.body.classList.add('hud-off');speedDrop.style.display='none';qualityDrop.style.display='none';}},3400);
+    if(!vid.paused){
+      hudTimer=setTimeout(function(){
+        if(!vid.paused){
+          document.body.classList.add('hud-off');
+          speedDrop.style.display='none';qualityDrop.style.display='none';
+        }
+      },3200);
     }
   }
 
-  function sendIframeKodikCmd(method,extra){
-    if(activeIframe&&activeIframe.contentWindow){
-      var val={method:method};
-      if(extra){for(var k in extra){if(Object.prototype.hasOwnProperty.call(extra,k))val[k]=extra[k];}}
-      activeIframe.contentWindow.postMessage({key:'kodik_player_api',value:val},'*');
-    }
-  }
-
-  function applyRateToVideo(){
+  function applyRate(val){
+    rate=Math.max(0.25,Math.min(4.0,parseFloat(val)||1.0));
     try{
-      var keepPitch=(rate>=0.5&&rate<=4.0);
-      if('preservesPitch' in vid)vid.preservesPitch=keepPitch;
-      if('webkitPreservesPitch' in vid)vid.webkitPreservesPitch=keepPitch;
+      if('preservesPitch' in vid)vid.preservesPitch=true;
+      if('webkitPreservesPitch' in vid)vid.webkitPreservesPitch=true;
       vid.defaultPlaybackRate=rate;
-      if(Math.abs(vid.playbackRate-rate)>0.005)vid.playbackRate=rate;
+      vid.playbackRate=rate;
     }catch(e){}
-    if(activeIframe)sendIframeKodikCmd('speed',{speed:Math.min(2,Math.max(0.25,rate))});
-  }
-
-  function setRate(val,broadcastSync){
-    var n=Math.max(0.25,Math.min(4.0,parseFloat(val)||1.0));
-    rate=n;applyRateToVideo();speedLbl.textContent=fmtRate(rate);
+    speedLbl.textContent=rate+'x';
     try{localStorage.setItem('kodik_rate',String(rate));}catch(e){}
-    if(broadcastSync){
-      flash(fmtRate(rate));
-      if(roomState.active&&(roomState.isHost||roomState.isAdmin))sendRoomAction('RATE',{rate:rate});
-    }
   }
 
   function buildSpeedDrop(){
     speedDrop.innerHTML='';
     SPEEDS.forEach(function(s){
       var b=document.createElement('button');b.type='button';b.className='drop-item'+(Math.abs(s-rate)<0.02?' active':'');b.textContent=s+'x';
-      b.onclick=function(e){e.stopPropagation();setRate(s,true);speedDrop.style.display='none';wakeHud();};
+      b.onclick=function(e){
+        e.stopPropagation();applyRate(s);speedDrop.style.display='none';flash(s+'x');
+        if(roomState.active&&(roomState.role==='host'||roomState.role==='admin'))sendRoomAction('RATE',{rate:s});
+        wakeHud();
+      };
       speedDrop.appendChild(b);
     });
   }
 
-  function buildQualityDrop(qs){
-    qualityDrop.innerHTML='';
-    qs.forEach(function(q){
-      var b=document.createElement('button');b.type='button';b.className='drop-item'+(q===curQ?' active':'');b.textContent=q+'p';
-      b.onclick=function(e){
-        e.stopPropagation();
-        if(streams[q]&&q!==curQ){
-          var t=getCurrentVideoTime();curQ=q;qualityLbl.textContent=q+'p';
-          mountStream(streams[q],proxyStreams[q],currentSrc,t);
-        }
-        qualityDrop.style.display='none';wakeHud();
-      };
-      qualityDrop.appendChild(b);
-    });
-  }
-
-  function toggleLock(){
-    isLocked=!isLocked;
-    document.body.classList.toggle('locked',isLocked);
-    lockBtn.innerHTML=isLocked?LOCK_CLOSED_SVG:LOCK_OPEN_SVG;
-    speedDrop.style.display='none';qualityDrop.style.display='none';epModal.style.display='none';voiceModal.style.display='none';
-    unlockBtn.style.display='none';
-    if(unlockTimer)clearTimeout(unlockTimer);
-    flash(isLocked?'Экран заблокирован':'Разблокировано');
-    if(!isLocked)wakeHud();
-  }
-  lockBtn.onclick=function(e){e.stopPropagation();toggleLock();};
-  unlockBtn.onclick=function(e){e.stopPropagation();toggleLock();};
-
-  function togglePlay(userTriggered){
-    if(userTriggered&&roomState.active&&!roomState.isHost&&!roomState.isAdmin){
-      flash('Только хост или админ управляет просмотром');return;
-    }
-    if(!currentSrc){openSourceModal();return;}
-    if(activeIframe){
-      if(iframePaused){
-        sendIframeKodikCmd('play');
-        iframePaused=false;
-        updatePlayButtonVisual(false);
-        if(userTriggered&&roomState.active&&(roomState.isHost||roomState.isAdmin))sendRoomAction('PLAY',{time:iframeCurTime});
-      }else{
-        sendIframeKodikCmd('pause');
-        iframePaused=true;
-        updatePlayButtonVisual(true);
-        if(userTriggered&&roomState.active&&(roomState.isHost||roomState.isAdmin))sendRoomAction('PAUSE',{time:iframeCurTime});
-      }
-      wakeHud();return;
-    }
-    if(vid.paused){var p=vid.play();if(p&&p.catch)p.catch(function(){});}else{vid.pause();}
-    wakeHud();
-  }
-
-  function skipSec(sec,userTriggered){
-    if(userTriggered&&roomState.active&&!roomState.isHost&&!roomState.isAdmin){
-      flash('Только хост или админ управляет просмотром');return;
-    }
-    var cur=getCurrentVideoTime(),dur=getVideoDuration();
-    var tgt=Math.max(0,dur>0?Math.min(dur,cur+sec):cur+sec);
-    if(activeIframe){
-      sendIframeKodikCmd('seek',{seconds:tgt});
-      iframeCurTime=tgt;
-      timeLbl.textContent=fmtTime(iframeCurTime)+' / '+fmtTime(iframeDuration);
-      updateTimelineProgress();
-    }else{
-      vid.currentTime=tgt;
-    }
-    flash((sec>0?'+':'')+Math.round(sec)+'с');
-    wakeHud();
-    if(roomState.active&&(roomState.isHost||roomState.isAdmin))sendRoomAction('SEEK',{time:tgt});
-  }
-
-  function goToEp(nextIdx,userTriggered){
-    if(userTriggered&&roomState.active&&!roomState.isHost&&!roomState.isAdmin){
-      flash('Только хост или админ меняет серии');return;
-    }
-    var eps=((ctxData&&ctxData.variants&&ctxData.variants[vIdx]&&ctxData.variants[vIdx].episodes)||[]);
-    if(nextIdx<0||nextIdx>=eps.length)return;
-    reportProgress(true);
-    eIdx=nextIdx;
-    currentSrc=eps[eIdx].link;
-    syncBrowserUrl();
-    loadCurrent(0);wakeHud();
-    if(userTriggered&&roomState.active&&(roomState.isHost||roomState.isAdmin)){
-      sendRoomAction('CHANGE_EP',{eIdx:eIdx,vIdx:vIdx,src:currentSrc});
-    }
-  }
-
-  cPlayBtn.onclick=function(e){e.stopPropagation();togglePlay(true);};
-  cPrevBtn.onclick=function(e){e.stopPropagation();if(eIdx>0)goToEp(eIdx-1,true);};
-  cNextBtn.onclick=function(e){e.stopPropagation();goToEp(eIdx+1,true);};
-  skip125Btn.onclick=function(e){e.stopPropagation();skipSec(85,true);};
-
   speedBtn.onclick=function(e){
     e.stopPropagation();qualityDrop.style.display='none';
-    buildSpeedDrop();var r=speedBtn.getBoundingClientRect();speedDrop.style.top=(r.bottom+6)+'px';speedDrop.style.right=(window.innerWidth-r.right)+'px';
+    buildSpeedDrop();
+    var r=speedBtn.getBoundingClientRect();speedDrop.style.top=(r.bottom+6)+'px';speedDrop.style.right=(window.innerWidth-r.right)+'px';
     speedDrop.style.display=speedDrop.style.display==='flex'?'none':'flex';
   };
 
@@ -869,21 +315,166 @@ body.mode-surface #qualityBtn{display:none!important}
     qualityDrop.style.display=qualityDrop.style.display==='flex'?'none':'flex';
   };
 
-  epPickerBtn.onclick=function(e){e.stopPropagation();openEpModal();};
-  voicePickerBtn.onclick=function(e){e.stopPropagation();openVoiceModal();};
-  epCloseBtn.onclick=function(e){e.stopPropagation();epModal.style.display='none';};
-  voiceCloseBtn.onclick=function(e){e.stopPropagation();voiceModal.style.display='none';};
-  epModal.onclick=function(){epModal.style.display='none';};
-  voiceModal.onclick=function(){voiceModal.style.display='none';};
+  function updateTimeline(){
+    var cur=vid.currentTime||0,dur=vid.duration||0;
+    timeLbl.textContent=fmtTime(cur)+' / '+fmtTime(dur);
+    if(dur>0){
+      var playedPct=Math.max(0,Math.min(100,(cur/dur)*100));
+      timelinePlayed.style.width=playedPct+'%';
+      if(!isSeeking)seek.value=String(Math.round((cur/dur)*1000));
+      if(vid.buffered.length>0){
+        var bEnd=vid.buffered.end(vid.buffered.length-1);
+        var bPct=Math.max(0,Math.min(100,(bEnd/dur)*100));
+        timelineBuffer.style.width=bPct+'%';
+      }
+    }
+  }
 
-  function openEpModal(){
+  seek.oninput=function(){
+    isSeeking=true;
+    var dur=vid.duration||0;
+    if(dur>0){
+      var cur=(parseFloat(seek.value)/1000)*dur;
+      timeLbl.textContent=fmtTime(cur)+' / '+fmtTime(dur);
+      timelinePlayed.style.width=((cur/dur)*100)+'%';
+    }
+  };
+
+  seek.onchange=function(){
+    isSeeking=false;
+    var dur=vid.duration||0;
+    if(dur>0){
+      var cur=(parseFloat(seek.value)/1000)*dur;
+      vid.currentTime=cur;
+      if(roomState.active&&(roomState.role==='host'||roomState.role==='admin'))sendRoomAction('SEEK',{time:cur});
+    }
+    wakeHud();
+  };
+
+  function togglePlay(userTriggered){
+    if(userTriggered&&roomState.active&&roomState.role==='viewer'){
+      flash('Только хост или админ управляет просмотром');return;
+    }
+    if(vid.paused){
+      vid.play().then(function(){
+        playIcon.innerHTML=PAUSE_SVG;
+        if(userTriggered&&roomState.active&&(roomState.role==='host'||roomState.role==='admin'))sendRoomAction('PLAY',{time:vid.currentTime});
+      }).catch(function(){});
+    }else{
+      vid.pause();
+      playIcon.innerHTML=PLAY_SVG;
+      if(userTriggered&&roomState.active&&(roomState.role==='host'||roomState.role==='admin'))sendRoomAction('PAUSE',{time:vid.currentTime});
+    }
+    wakeHud();
+  }
+
+  cPlayBtn.onclick=function(e){e.stopPropagation();togglePlay(true);};
+  vid.onclick=function(e){e.stopPropagation();togglePlay(true);};
+
+  skip85Btn.onclick=function(e){
+    e.stopPropagation();
+    var cur=vid.currentTime||0,dur=vid.duration||0;
+    var target=Math.min(dur,cur+85);
+    vid.currentTime=target;
+    flash('+85с');
+    if(roomState.active&&(roomState.role==='host'||roomState.role==='admin'))sendRoomAction('SEEK',{time:target});
+    wakeHud();
+  };
+
+  pipBtn.onclick=function(e){
+    e.stopPropagation();
+    if(document.pictureInPictureElement)document.exitPictureInPicture().catch(function(){});
+    else if(vid.requestPictureInPicture)vid.requestPictureInPicture().catch(function(){});
+  };
+
+  fsBtn.onclick=function(e){
+    e.stopPropagation();
+    if(!document.fullscreenElement)document.documentElement.requestFullscreen().catch(function(){});
+    else document.exitFullscreen().catch(function(){});
+  };
+
+  lockBtn.onclick=function(e){
+    e.stopPropagation();
+    isLocked=true;document.body.classList.add('locked');
+    speedDrop.style.display='none';qualityDrop.style.display='none';
+    flash('Экран заблокирован');
+  };
+
+  stage.onclick=function(){
+    if(isLocked){
+      unlockBtn.style.display='inline-flex';
+      setTimeout(function(){unlockBtn.style.display='none';},2200);
+      return;
+    }
+    if(document.body.classList.contains('hud-off'))wakeHud();
+    else document.body.classList.add('hud-off');
+  };
+
+  unlockBtn.onclick=function(e){
+    e.stopPropagation();
+    isLocked=false;document.body.classList.remove('locked');
+    unlockBtn.style.display='none';flash('Экран разблокирован');wakeHud();
+  };
+
+  function mountStream(url,startFrom){
+    if(hls){try{hls.destroy();}catch(e){}hls=null;}
+    vid.pause();
+    var isM3u8=url.indexOf('.m3u8')!==-1||url.indexOf('/api/hls-proxy')!==-1;
+    if(isM3u8&&window.Hls&&window.Hls.isSupported()){
+      hls=new window.Hls({enableWorker:true,lowLatencyMode:false});
+      hls.loadSource(url);
+      hls.attachMedia(vid);
+      hls.on(window.Hls.Events.MANIFEST_PARSED,function(_,data){
+        if(data.levels&&data.levels.length>0){
+          qualityDrop.innerHTML='';
+          data.levels.forEach(function(lvl,idx){
+            var b=document.createElement('button');b.type='button';b.className='drop-item';b.textContent=lvl.height+'p';
+            b.onclick=function(e){
+              e.stopPropagation();hls.currentLevel=idx;qualityLbl.textContent=lvl.height+'p';qualityDrop.style.display='none';
+            };
+            qualityDrop.appendChild(b);
+          });
+        }
+        applyRate(rate);
+        if(startFrom>1)vid.currentTime=startFrom;
+        vid.play().then(function(){playIcon.innerHTML=PAUSE_SVG;}).catch(function(){playIcon.innerHTML=PLAY_SVG;});
+      });
+    }else{
+      vid.src=url;vid.load();applyRate(rate);
+      if(startFrom>1)vid.currentTime=startFrom;
+      vid.play().then(function(){playIcon.innerHTML=PAUSE_SVG;}).catch(function(){playIcon.innerHTML=PLAY_SVG;});
+    }
+  }
+
+  function loadEpisode(targetEIdx,startFrom,userTriggered){
+    if(!ctxData||!ctxData.variants[vIdx])return;
+    var eps=ctxData.variants[vIdx].episodes||[];
+    if(targetEIdx<0||targetEIdx>=eps.length)return;
+    eIdx=targetEIdx;
+    epCurLbl.textContent=eps[eIdx].label;
+    var epLink=eps[eIdx].link;
+    fetch('/api/stream?link='+encodeURIComponent(epLink)).then(function(r){return r.json();}).then(function(d){
+      var streamUrl=(d.proxyStreams&&d.proxyStreams['720'])||(d.streams&&d.streams['720'])||epLink;
+      currentSrc=streamUrl;
+      mountStream(streamUrl,startFrom||0);
+      if(userTriggered&&roomState.active&&(roomState.role==='host'||roomState.role==='admin')){
+        sendRoomAction('CHANGE_EP',{eIdx:eIdx,vIdx:vIdx,src:streamUrl});
+      }
+    }).catch(function(){
+      currentSrc=epLink;mountStream(epLink,startFrom||0);
+    });
+  }
+
+  cPrevBtn.onclick=function(e){e.stopPropagation();if(eIdx>0)loadEpisode(eIdx-1,0,true);};
+  cNextBtn.onclick=function(e){e.stopPropagation();loadEpisode(eIdx+1,0,true);};
+
+  function openEpisodeModal(){
+    if(!ctxData||!ctxData.variants[vIdx])return;
     epGrid.innerHTML='';
-    var eps=((ctxData&&ctxData.variants&&ctxData.variants[vIdx]&&ctxData.variants[vIdx].episodes)||[]);
-    eps.forEach(function(ep,i){
-      var b=document.createElement('button');b.type='button';b.className='ep-tile'+(i===eIdx?' active':'');b.textContent=ep.label;
+    (ctxData.variants[vIdx].episodes||[]).forEach(function(ep,i){
+      var b=document.createElement('button');b.type='button';b.className='ep-tile'+(i===eIdx?' active':'');b.textContent=ep.e;
       b.onclick=function(e){
-        e.stopPropagation();epModal.style.display='none';
-        if(i!==eIdx)goToEp(i,true);
+        e.stopPropagation();epModal.style.display='none';loadEpisode(i,0,true);
       };
       epGrid.appendChild(b);
     });
@@ -891,701 +482,214 @@ body.mode-surface #qualityBtn{display:none!important}
   }
 
   function openVoiceModal(){
+    if(!ctxData)return;
     voiceList.innerHTML='';
-    ((ctxData&&ctxData.variants)||[]).forEach(function(v,i){
+    (ctxData.variants||[]).forEach(function(v,i){
       var b=document.createElement('button');b.type='button';b.className='ep-tile'+(i===vIdx?' active':'');b.style.textAlign='left';b.style.padding='10px 14px';
       b.textContent=v.label;
       b.onclick=function(e){
         e.stopPropagation();voiceModal.style.display='none';
-        if(roomState.active&&!roomState.isHost&&!roomState.isAdmin){flash('Только хост или админ выбирает озвучку');return;}
         if(i===vIdx)return;
-        reportProgress(true);
-        var oldEp=(ctxData.variants[vIdx]&&ctxData.variants[vIdx].episodes&&ctxData.variants[vIdx].episodes[eIdx])||null;
-        var savedSec=getCurrentVideoTime();
+        var oldEp=ctxData.variants[vIdx]&&ctxData.variants[vIdx].episodes[eIdx];
         vIdx=i;
-        var newEps=(ctxData.variants[vIdx]&&ctxData.variants[vIdx].episodes)||[];
-        var found=-1;
-        if(oldEp){for(var k=0;k<newEps.length;k++){if(newEps[k].e===oldEp.e){found=k;break;}}}
-        eIdx=found>=0?found:0;
-        if(newEps[eIdx])currentSrc=newEps[eIdx].link;
-        syncBrowserUrl();
-        loadCurrent(found>=0?savedSec:0);wakeHud();
-        if(roomState.active&&(roomState.isHost||roomState.isAdmin))sendRoomAction('CHANGE_EP',{eIdx:eIdx,vIdx:vIdx,src:currentSrc});
+        voiceCurLbl.textContent=ctxData.variants[vIdx].shortLabel||'Озвучка';
+        var newEps=ctxData.variants[vIdx].episodes||[];
+        var targetE=0;
+        if(oldEp){
+          for(var k=0;k<newEps.length;k++){if(newEps[k].e===oldEp.e){targetE=k;break;}}
+        }
+        var savedSec=vid.currentTime||0;
+        loadEpisode(targetE,savedSec,true);
       };
       voiceList.appendChild(b);
     });
     voiceModal.style.display='flex';
   }
 
-  fsBtn.onclick=function(e){
-    e.stopPropagation();
-    if(!document.fullscreenElement){
-      var el=document.documentElement;
-      if(el.requestFullscreen)el.requestFullscreen().catch(function(){});
-      fsBtn.innerHTML=FS_COMPRESS_SVG;
-    }else{
-      if(document.exitFullscreen)document.exitFullscreen().catch(function(){});
-      fsBtn.innerHTML=FS_EXPAND_SVG;
-    }
-  };
+  epPickerBtn.onclick=function(e){e.stopPropagation();openEpisodeModal();};
+  voicePickerBtn.onclick=function(e){e.stopPropagation();openVoiceModal();};
+  epCloseBtn.onclick=function(){epModal.style.display='none';};
+  voiceCloseBtn.onclick=function(){voiceModal.style.display='none';};
 
-  miniPipBtn.onclick=function(e){
-    e.stopPropagation();
-    if(activeIframe){
-      sendIframeKodikCmd(surfaceInPip?'exit_pip':'enter_pip');
-      surfaceInPip=!surfaceInPip;
-      return;
-    }
-    if(document.pictureInPictureElement){document.exitPictureInPicture().catch(function(){});}
-    else if(vid.requestPictureInPicture){vid.requestPictureInPicture().catch(function(){});}
-  };
-
-  function openSourceModal(){
-    sourceUrlInput.value=currentSrc||'';
-    sourceTitleInput.value=customTitle||'';
-    sourceErr.style.display='none';
-    closeSourceBtn.style.display=currentSrc?'inline-flex':'none';
-    sourceModal.style.display='flex';
-  }
-  titleLbl.onclick=function(e){e.stopPropagation();openSourceModal();};
-  backBtn.onclick=function(e){e.stopPropagation();openSourceModal();};
-  closeSourceBtn.onclick=function(){if(currentSrc)sourceModal.style.display='none';};
-
-  loadSourceSubmitBtn.onclick=function(){
-    var rawVal=sourceUrlInput.value.trim();
-    var t=sourceTitleInput.value.trim();
-    if(!rawVal){sourceErr.style.display='block';return;}
-    sourceErr.style.display='none';
-    sourceModal.style.display='none';
-    customTitle=t;
-    var isUrl=(rawVal.indexOf('http')===0||rawVal.indexOf(SLASH_PAIR)===0||rawVal.indexOf('<iframe')!==-1||rawVal.indexOf('kodik')!==-1);
-    if(isUrl){
-      var clean=normalizeSrc(rawVal);
-      if(!clean){sourceErr.style.display='block';sourceModal.style.display='flex';return;}
-      currentSrc=clean;groupKey=clean;
-      syncBrowserUrl();
-      loadContext({src:clean,skipResume:true});
-      if(roomState.active&&(roomState.isHost||roomState.isAdmin))sendRoomAction('LOAD_MEDIA',{src:clean,title:t});
-    }else{
-      loadContext({q:rawVal,skipResume:true});
-    }
-  };
-
-  function mountSurface(embedUrl,resumeAt){
-    if(hls){try{hls.destroy();}catch(e){}hls=null;}
-    try{vid.pause();vid.removeAttribute('src');vid.load();}catch(e){}
-    vid.style.display='none';
-    streams={};proxyStreams={};
-    iframeCurTime=resumeAt>1?resumeAt:0;
-    iframeDuration=0;
-    iframePaused=true;
-    surfaceBooted=false;
-    pendingSurfaceSeek=resumeAt>1?resumeAt:0;
-    document.body.classList.add('mode-surface');
-    updatePlayButtonVisual(true);
-    surfaceCurtain.style.display='block';
-    timeLbl.textContent=fmtTime(iframeCurTime)+' / 00:00';
-    updateTimelineProgress();
-
-    if(!activeIframe){
-      activeIframe=document.createElement('iframe');
-      activeIframe.setAttribute('tabindex','-1');
-      activeIframe.setAttribute('allowfullscreen','true');
-      activeIframe.setAttribute('allow','autoplay; fullscreen; picture-in-picture');
-      stage.insertBefore(activeIframe,stage.firstChild);
-    }
-    activeIframe.onload=function(){
-      sendIframeKodikCmd('play');
-      setTimeout(function(){if(activeIframe&&!surfaceBooted)sendIframeKodikCmd('play');},650);
-      setTimeout(function(){msg('',false);},1600);
-    };
-    activeIframe.src=buildSurfaceUrl(embedUrl,resumeAt||0);
-    wakeHud();
-  }
-
-  function mountStream(url,proxyUrl,fallbackEmbed,resumeAt){
-    document.body.classList.remove('mode-surface','surface-paused');
-    surfaceCurtain.style.display='none';
-    if(activeIframe){try{activeIframe.remove();}catch(e){}activeIframe=null;}
-    vid.style.display='block';
-    if(hls){try{hls.destroy();}catch(e){}hls=null;}
-    try{vid.pause();vid.removeAttribute('src');vid.load();}catch(e){}
-    var started=false,triedProxy=false;
-    function readyOnce(){
-      if(started)return;started=true;
-      msg('',false);
-      if(resumeAt>1){try{vid.currentTime=resumeAt;}catch(e){}}
-      applyRateToVideo();
-      var p=vid.play();
-      if(p&&p.catch)p.catch(function(){updatePlayButtonVisual(true);wakeHud();});
-    }
-    function attach(srcToUse){
-      var isM3u8=srcToUse.indexOf('.m3u8')!==-1||srcToUse.indexOf('/api/hls?url=')!==-1;
-      if(window.Hls&&window.Hls.isSupported()&&isM3u8){
-        hls=new window.Hls({maxBufferLength:30,maxMaxBufferLength:60,enableWorker:true,lowLatencyMode:false});
-        hls.loadSource(srcToUse);
-        hls.attachMedia(vid);
-        hls.on(window.Hls.Events.MANIFEST_PARSED,readyOnce);
-        hls.on(window.Hls.Events.ERROR,function(ev,d){
-          if(!d||!d.fatal)return;
-          if(!triedProxy&&proxyUrl&&srcToUse!==proxyUrl){triedProxy=true;try{hls.destroy();}catch(e){}hls=null;attach(proxyUrl);return;}
-          if(d.type===window.Hls.ErrorTypes.NETWORK_ERROR){hls.startLoad();return;}
-          if(d.type===window.Hls.ErrorTypes.MEDIA_ERROR){hls.recoverMediaError();return;}
-          if(fallbackEmbed&&!isDirectStream(fallbackEmbed))mountSurface(fallbackEmbed,resumeAt||0);
-          else msg('Ошибка воспроизведения потока',true,true);
-        });
-      }else{
-        vid.src=srcToUse;vid.onloadedmetadata=readyOnce;vid.oncanplay=readyOnce;
-        vid.onerror=function(){
-          if(!triedProxy&&proxyUrl&&srcToUse!==proxyUrl){triedProxy=true;attach(proxyUrl);}
-          else if(fallbackEmbed&&!isDirectStream(fallbackEmbed))mountSurface(fallbackEmbed,resumeAt||0);
-          else msg('Ошибка загрузки видео',true,true);
-        };
-        vid.load();
-      }
-    }
-    attach(url);
-  }
-
-  setInterval(function(){
-    if(activeIframe&&surfaceBooted&&!draggingSeek){
-      sendIframeKodikCmd('get_time');
-    }
-  },500);
-
-  window.addEventListener('message',function(event){
-    if(!event.data||typeof event.data!=='object')return;
-    var k=event.data.key,val=event.data.value;
-    if(k==='kodik_player_current_episode'){
-      surfaceBooted=true;
-      surfaceCurtain.style.display='none';
-      msg('',false);
-      applyRateToVideo();
-      if(val&&val.translation&&val.translation.title){
-        if(!ctxData||ctxData.variants.length<=1)voiceCurLbl.textContent=val.translation.title;
-      }
-    }else if(k==='kodik_player_time_update'||k==='kodik_player_time'){
-      if(typeof val==='number'&&!draggingSeek){
-        iframeCurTime=val;
-        timeLbl.textContent=fmtTime(iframeCurTime)+' / '+fmtTime(iframeDuration);
-        updateTimelineProgress();
-        reportProgress(false);
-      }
-    }else if(k==='kodik_player_duration_update'){
-      if(typeof val==='number'&&val>0){
-        surfaceBooted=true;
-        surfaceCurtain.style.display='none';
-        msg('',false);
-        iframeDuration=val;
-        timeLbl.textContent=fmtTime(iframeCurTime)+' / '+fmtTime(iframeDuration);
-        updateTimelineProgress();
-        if(pendingSurfaceSeek>1){
-          sendIframeKodikCmd('seek',{seconds:pendingSurfaceSeek});
-          pendingSurfaceSeek=0;
-        }
-      }
-    }else if(k==='kodik_player_play'||k==='kodik_player_video_started'){
-      surfaceBooted=true;
-      surfaceCurtain.style.display='none';
-      msg('',false);
-      iframePaused=false;
-      updatePlayButtonVisual(false);
-      applyRateToVideo();
-      if(pendingSurfaceSeek>1){
-        sendIframeKodikCmd('seek',{seconds:pendingSurfaceSeek});
-        pendingSurfaceSeek=0;
-      }
-      wakeHud();
-      if(roomState.active&&(roomState.isHost||roomState.isAdmin)&&!roomState.ignoreNextSync)sendRoomAction('PLAY',{time:iframeCurTime});
-      roomState.ignoreNextSync=false;
-    }else if(k==='kodik_player_pause'){
-      iframePaused=true;
-      updatePlayButtonVisual(true);
-      document.body.classList.remove('hud-off');
-      reportProgress(true);
-      if(roomState.active&&(roomState.isHost||roomState.isAdmin)&&!roomState.ignoreNextSync)sendRoomAction('PAUSE',{time:iframeCurTime});
-      roomState.ignoreNextSync=false;
-    }else if(k==='kodik_player_video_ended'){
-      reportProgress(true);
-      goToEp(eIdx+1,false);
-    }else if(k==='kodik_player_enter_pip'){
-      surfaceInPip=true;
-    }else if(k==='kodik_player_exit_pip'){
-      surfaceInPip=false;
-    }
-  });
-
-  function tryStreamEndpoints(epLink){
-    var cands=[];
-    if(customApiBase)cands.push({url:customApiBase+'/api/stream?link='+encodeURIComponent(epLink),ms:6000});
-    if(!isStaticGithubHost)cands.push({url:'/api/stream?link='+encodeURIComponent(epLink),ms:6000});
-    cands.push({url:LOCAL_EXTERA_API+'/api/stream?link='+encodeURIComponent(epLink),ms:900});
-    var idx=0;
-    function step(){
-      if(idx>=cands.length)return Promise.resolve(null);
-      var item=cands[idx++];
-      return fetchWithTimeout(item.url,item.ms).then(function(r){
-        if(!r.ok)return step();
-        return r.json().then(function(d){
-          if(d&&d.ok&&d.streams&&Object.keys(d.streams).length>0)return d;
-          return step();
-        });
-      }).catch(function(){return step();});
-    }
-    return step();
-  }
-
-  function loadCurrent(resumeAt){
-    var eps=((ctxData&&ctxData.variants&&ctxData.variants[vIdx]&&ctxData.variants[vIdx].episodes)||[]);
-    if(!eps.length)return msg('Нет доступных серий релиза',true,true);
-    if(eIdx<0||eIdx>=eps.length)eIdx=0;
-    var ep=eps[eIdx];
-    currentSrc=ep.link;
-    epCurLbl.textContent=ep.label;
-    voiceCurLbl.textContent=((ctxData.variants&&ctxData.variants[vIdx]&&ctxData.variants[vIdx].label.split(' (')[0])||'Озвучка');
-    cPrevBtn.style.opacity=eIdx<=0?'0.35':'1';
-    cNextBtn.style.opacity=eIdx+1>=eps.length?'0.35':'1';
-
-    reqSeq+=1;var mySeq=reqSeq;
-    msg('Загрузка потока: '+ep.label+'...',true);
-
-    if(isDirectStream(ep.link)){
-      streams={'720':ep.link};
-      proxyStreams=isStaticGithubHost?{}:{'720':'/api/hls?url='+encodeURIComponent(ep.link)};
-      curQ='720';qualityLbl.textContent='720p';
-      buildQualityDrop(['720']);
-      mountStream(ep.link,proxyStreams['720'],null,resumeAt||0);
-      return;
-    }
-
-    tryStreamEndpoints(ep.link).then(function(d){
-      if(mySeq!==reqSeq)return;
-      if(d&&d.streams&&Object.keys(d.streams).length>0){
-        streams=d.streams;
-        proxyStreams=d.proxyStreams||{};
-        var qs=d.qualities||Object.keys(streams).sort(function(a,b){return Number(a)-Number(b);});
-        if(!streams[curQ])curQ=streams['720']?'720':(qs[qs.length-1]||'');
-        qualityLbl.textContent=curQ+'p';
-        buildQualityDrop(qs.slice());
-        mountStream(streams[curQ],proxyStreams[curQ],d.iframe||ep.link,resumeAt||0);
-      }else{
-        mountSurface(ep.link,resumeAt||0);
-      }
-    });
-  }
-
-  function applyResolvedContext(d,opts){
+  function applyContext(d){
     ctxData=d;
-    groupKey=d.group_key||opts.gk||opts.src||'';
-    vIdx=d.variant_idx||0;
-    eIdx=d.ep_idx||0;
-    titleLbl.textContent=customTitle||d.title||'Kodik';
-    var resumeSec=opts.resumeAt||0;
-    if(!opts.skipResume&&!resumeSec){
-      var saved=readProgress(groupKey);
-      if(saved&&saved.time>5&&!(saved.dur>0&&saved.time/saved.dur>0.94)){
-        if(!opts.src&&saved.v_idx<d.variants.length)vIdx=saved.v_idx;
-        var tEps=(d.variants[vIdx]&&d.variants[vIdx].episodes)||[];
-        if(!opts.src&&saved.e_idx<tEps.length)eIdx=saved.e_idx;
-        if(saved.v_idx===vIdx&&saved.e_idx===eIdx){
-          resumeSec=saved.time;
-          flash('Продолжение: '+fmtTime(resumeSec));
+    cleanTitle=sanitizeTitle(d.title);
+    titleLbl.textContent=cleanTitle;
+    document.title=cleanTitle+' — Kodik Player';
+    vIdx=0;eIdx=0;
+    voiceCurLbl.textContent=d.variants[0]?d.variants[0].shortLabel:'Озвучка';
+    loadEpisode(0,0,false);
+  }
+
+  function loadContextByQuery(q){
+    fetch('/api/context?q='+encodeURIComponent(q)).then(function(r){return r.json();}).then(function(d){
+      if(d.ok)applyContext(d);
+    }).catch(function(){});
+  }
+
+  searchBtn.onclick=function(e){e.stopPropagation();searchModal.style.display='flex';searchKeywordInput.focus();};
+  titleLbl.onclick=function(e){e.stopPropagation();searchModal.style.display='flex';searchKeywordInput.focus();};
+  closeSearchBtn.onclick=function(){searchModal.style.display='none';};
+
+  var searchTimer=null;
+  searchKeywordInput.oninput=function(){
+    var q=searchKeywordInput.value.trim();
+    if(searchTimer)clearTimeout(searchTimer);
+    if(q.length<2){searchResultsContainer.innerHTML='';return;}
+    searchTimer=setTimeout(function(){
+      fetch('/api/search?q='+encodeURIComponent(q)).then(function(r){return r.json();}).then(function(d){
+        searchResultsContainer.innerHTML='';
+        if(d.ok&&Array.isArray(d.items)){
+          d.items.forEach(function(item){
+            var row=document.createElement('div');row.className='search-item';
+            var posterImg=document.createElement('img');posterImg.className='search-poster';
+            if(item.poster)posterImg.src=item.poster.indexOf('//')===0?('https:'+item.poster):item.poster;
+            row.appendChild(posterImg);
+            var info=document.createElement('div');info.className='search-info';
+            var t=document.createElement('div');t.className='search-title';t.textContent=item.title;info.appendChild(t);
+            var m=document.createElement('div');m.className='search-meta';m.textContent=(item.year?item.year+' · ':'')+'Озвучек: '+item.variantsCount;info.appendChild(m);
+            row.appendChild(info);
+            row.onclick=function(){
+              searchModal.style.display='none';
+              fetch('/api/context?gk='+encodeURIComponent(item.groupKey)).then(function(r){return r.json();}).then(function(cd){
+                if(cd.ok)applyContext(cd);
+              });
+            };
+            searchResultsContainer.appendChild(row);
+          });
         }
-      }
-    }
-    loadCurrent(resumeSec);
-    wakeHud();
-  }
-
-  function loadContext(opts){
-    msg('Подготовка релиза...',true);
-    var p=new URLSearchParams();
-    if(opts.src)p.set('src',opts.src);
-    if(opts.gk)p.set('gk',opts.gk);
-    if(opts.vi!==undefined)p.set('vi',String(opts.vi));
-    if(opts.q)p.set('q',opts.q);
-
-    var serverCtxPromise;
-    if(customApiBase){
-      serverCtxPromise=fetchWithTimeout(customApiBase+'/api/context?'+p.toString(),5000).then(function(r){return r.ok?r.json():null;}).catch(function(){return null;});
-    }else if(!isStaticGithubHost){
-      serverCtxPromise=fetchWithTimeout('/api/context?'+p.toString(),5000).then(function(r){return r.ok?r.json():null;}).catch(function(){return null;});
-    }else{
-      serverCtxPromise=Promise.resolve(null);
-    }
-
-    serverCtxPromise.then(function(d){
-      if(d&&d.ok&&d.variants&&d.variants.length>0)return d;
-      return resolveClientContext(opts);
-    }).then(function(d){
-      if(d&&d.ok&&d.variants&&d.variants.length>0){
-        applyResolvedContext(d,opts);
-        return;
-      }
-      if(opts.src){
-        ctxData={title:customTitle||'Kodik',variants:[{id:'0',label:'Озвучка',episodes:[{label:'1 серия',s:'1',e:'1',link:opts.src}]}]};
-        vIdx=0;eIdx=0;
-        titleLbl.textContent=customTitle||'Kodik';
-        loadCurrent(opts.resumeAt||0);
-      }else{
-        msg('Релиз не найден',true,true);
-      }
-    });
-  }
-
-  stage.onclick=function(e){
-    if(e.target.closest('button')||e.target.closest('input')||e.target.closest('.dropdown')||e.target.closest('.modal-sheet'))return;
-    speedDrop.style.display='none';qualityDrop.style.display='none';
-    if(isLocked){
-      unlockBtn.style.display='inline-flex';
-      if(unlockTimer)clearTimeout(unlockTimer);
-      unlockTimer=setTimeout(function(){unlockBtn.style.display='none';},2200);
-      return;
-    }
-    if(document.body.classList.contains('hud-off'))wakeHud();
-    else document.body.classList.add('hud-off');
+      });
+    },300);
   };
 
-  window.addEventListener('keydown',function(e){
-    if(isLocked)return;
-    var tag=e.target&&e.target.tagName;
-    if(tag==='INPUT'||tag==='TEXTAREA')return;
-    if(sourceModal.style.display==='flex'||createRoomModal.style.display==='flex'||joinRoomModal.style.display==='flex')return;
-    if(e.code==='Space'){e.preventDefault();togglePlay(true);}
-    else if(e.code==='ArrowRight'){e.preventDefault();skipSec(10,true);}
-    else if(e.code==='ArrowLeft'){e.preventDefault();skipSec(-10,true);}
-  });
-
-  seek.addEventListener('input',function(){
-    if(roomState.active&&!roomState.isHost&&!roomState.isAdmin)return;
-    draggingSeek=true;
-    var dur=getVideoDuration();
-    if(dur>0){
-      var pos=(parseFloat(seek.value)/1000)*dur;
-      timelinePlayed.style.width=((pos/dur)*100).toFixed(2)+'%';
-      timeLbl.textContent=fmtTime(pos)+' / '+fmtTime(dur);
+  function sendRoomAction(action,data){
+    if(roomState.ws&&roomState.ws.readyState===WebSocket.OPEN){
+      var pkt=Object.assign({type:'SYNC_ACTION',action:action},data);
+      roomState.ws.send(JSON.stringify(pkt));
     }
-  });
-
-  seek.addEventListener('change',function(){
-    draggingSeek=false;
-    if(roomState.active&&!roomState.isHost&&!roomState.isAdmin){flash('Только хост или админ перематывает');return;}
-    var dur=getVideoDuration();
-    if(dur>0){
-      var targetPos=(parseFloat(seek.value)/1000)*dur;
-      if(activeIframe){
-        sendIframeKodikCmd('seek',{seconds:targetPos});
-        iframeCurTime=targetPos;
-        timeLbl.textContent=fmtTime(targetPos)+' / '+fmtTime(dur);
-      }else{
-        vid.currentTime=targetPos;
-      }
-      reportProgress(true);
-      if(roomState.active&&(roomState.isHost||roomState.isAdmin))sendRoomAction('SEEK',{time:targetPos});
-    }
-    wakeHud();
-  });
-
-  vid.addEventListener('playing',function(){
-    msg('',false);
-    updatePlayButtonVisual(false);
-    applyRateToVideo();wakeHud();
-    if(roomState.active&&(roomState.isHost||roomState.isAdmin)&&!roomState.ignoreNextSync)sendRoomAction('PLAY',{time:vid.currentTime||0});
-    roomState.ignoreNextSync=false;
-  });
-
-  vid.addEventListener('pause',function(){
-    updatePlayButtonVisual(true);
-    document.body.classList.remove('hud-off');
-    reportProgress(true);
-    if(roomState.active&&(roomState.isHost||roomState.isAdmin)&&!roomState.ignoreNextSync)sendRoomAction('PAUSE',{time:vid.currentTime||0});
-    roomState.ignoreNextSync=false;
-  });
-
-  vid.addEventListener('timeupdate',function(){
-    var cur=vid.currentTime||0,dur=vid.duration||0;
-    timeLbl.textContent=fmtTime(cur)+' / '+fmtTime(dur);
-    updateTimelineProgress();
-    reportProgress(false);
-  });
-
-  vid.addEventListener('progress',updateTimelineProgress);
-  vid.addEventListener('ended',function(){reportProgress(true);goToEp(eIdx+1,false);});
-  window.addEventListener('beforeunload',function(){reportProgress(true);});
-  document.addEventListener('fullscreenchange',function(){fsBtn.innerHTML=document.fullscreenElement?FS_COMPRESS_SVG:FS_EXPAND_SVG;});
-
-  function getShareUrl(roomId){
-    var u=new URL(window.location.href);
-    u.searchParams.set('room',roomId);
-    if(currentSrc)u.searchParams.set('src',currentSrc);
-    if(customTitle)u.searchParams.set('title',customTitle);
-    return u.toString();
   }
 
-  function updateRoomButtonUI(){
-    if(!roomState.active){
-      roomBtn.classList.remove('room-active');
-      roomBtn.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>Создать комнату</span>';
-    }else{
-      roomBtn.classList.add('room-active');
-      var cnt=roomState.users.length||1;
-      roomBtn.innerHTML='<span class="room-indicator"></span><span>Онлайн: '+cnt+'</span>';
-    }
+  function initWatchParty(packet){
+    if(roomState.ws){roomState.ws.close();roomState.ws=null;}
+    var proto=window.location.protocol==='https:'?'wss:':'ws:';
+    var ws=new WebSocket(proto+'//'+window.location.host+'/ws');
+    roomState.ws=ws;
+    ws.onopen=function(){ws.send(JSON.stringify(packet));};
+    ws.onmessage=function(e){
+      try{
+        var pkt=JSON.parse(e.data);
+        if(pkt.type==='ROOM_CREATED'||pkt.type==='JOIN_SUCCESS'){
+          roomState.active=true;roomState.id=pkt.roomId;roomState.role=pkt.role;roomState.myId=pkt.userId;roomState.users=pkt.users||[];
+          roomBtn.classList.add('room-active');
+          roomBtnLbl.textContent='Комната ('+roomState.users.length+')';
+          roomCreateView.style.display='none';
+          roomManageView.style.display='block';
+          roomLinkInput.value=window.location.origin+'?room='+pkt.roomId;
+          roomModalHeader.textContent='Комната '+pkt.roomId;
+          renderRoomUsers();
+          flash(pkt.role==='host'?'Комната создана':'Подключено к комнате');
+        }else if(pkt.type==='JOIN_ERROR'){
+          flash(pkt.reason||'Ошибка подключения');
+        }else if(pkt.type==='USER_JOINED'||pkt.type==='USER_LEFT'||pkt.type==='USER_PROMOTED'||pkt.type==='USER_KICKED'){
+          roomState.users=pkt.users||[];
+          roomBtnLbl.textContent='Комната ('+roomState.users.length+')';
+          renderRoomUsers();
+        }else if(pkt.type==='PLAY'){
+          if(pkt.time!==undefined&&Math.abs((vid.currentTime||0)-pkt.time)>1.5)vid.currentTime=pkt.time;
+          vid.play().then(function(){playIcon.innerHTML=PAUSE_SVG;}).catch(function(){});
+        }else if(pkt.type==='PAUSE'){
+          if(pkt.time!==undefined)vid.currentTime=pkt.time;
+          vid.pause();playIcon.innerHTML=PLAY_SVG;
+        }else if(pkt.type==='SEEK'&&pkt.time!==undefined){
+          vid.currentTime=pkt.time;
+        }else if(pkt.type==='RATE'&&pkt.rate!==undefined){
+          applyRate(pkt.rate);flash(pkt.rate+'x');
+        }else if(pkt.type==='CHANGE_EP'){
+          if(pkt.eIdx!==undefined)eIdx=pkt.eIdx;
+          if(pkt.vIdx!==undefined)vIdx=pkt.vIdx;
+          if(pkt.src)mountStream(pkt.src,0);
+        }else if(pkt.type==='HEARTBEAT'&&roomState.role==='viewer'&&pkt.time!==undefined){
+          if(Math.abs((vid.currentTime||0)-pkt.time)>1.8)vid.currentTime=pkt.time;
+        }
+      }catch(err){}
+    };
   }
 
   function renderRoomUsers(){
-    roomUsersList.innerHTML='';
-    roomState.users.forEach(function(u){
-      var row=document.createElement('div');row.className='user-item';
-      var nm=document.createElement('span');nm.className='user-name';
-      var rLabel=u.role==='host'?'Хост':(u.role==='admin'?'Админ':'Зритель');
-      nm.textContent=u.name+(u.id===roomState.myId?' · Вы':'')+' · '+rLabel;
+    roomUsersBox.innerHTML='';
+    (roomState.users||[]).forEach(function(u){
+      var row=document.createElement('div');row.style.display='flex';row.style.alignItems='center';row.style.justifyContent='space-between';
+      row.style.padding='6px 8px';row.style.borderRadius='6px';row.style.background='rgba(255,255,255,0.06)';row.style.fontSize='12px';
+      var nm=document.createElement('span');nm.textContent=u.name+(u.id===roomState.myId?' (Вы)':'')+' · '+(u.role==='host'?'Хост':(u.role==='admin'?'Админ':'Зритель'));
       row.appendChild(nm);
-
-      var actions=document.createElement('div');actions.className='user-actions';
-      if(roomState.isHost&&u.id!==roomState.myId&&u.role!=='admin'){
-        var promBtn=document.createElement('button');promBtn.type='button';promBtn.className='btn-sm btn-promote';promBtn.textContent='Дать админа';
-        promBtn.onclick=function(){if(roomState.ws&&roomState.ws.readyState===WebSocket.OPEN)roomState.ws.send(JSON.stringify({type:'PROMOTE',targetId:u.id}));};
-        actions.appendChild(promBtn);
-      }
-      if((roomState.isHost||roomState.isAdmin)&&u.id!==roomState.myId&&u.role!=='host'){
-        var kickBtn=document.createElement('button');kickBtn.type='button';kickBtn.className='btn-sm btn-kick';kickBtn.textContent='Выгнать';
-        kickBtn.onclick=function(){if(roomState.ws&&roomState.ws.readyState===WebSocket.OPEN)roomState.ws.send(JSON.stringify({type:'KICK',targetId:u.id}));};
-        actions.appendChild(kickBtn);
-      }
-      row.appendChild(actions);
-      roomUsersList.appendChild(row);
+      roomUsersBox.appendChild(row);
     });
-  }
-
-  function sendRoomAction(action,data){
-    var pkt=Object.assign({type:'SYNC_ACTION',action:action},data);
-    if(roomState.ws&&roomState.ws.readyState===WebSocket.OPEN){roomState.ws.send(JSON.stringify(pkt));return;}
-    if(roomState.isHost){
-      var out=Object.assign({},data,{type:action});
-      Object.keys(roomState.peerConns).forEach(function(uid){var c=roomState.peerConns[uid];if(c&&c.open)c.send(out);});
-    }else if(roomState.hostConn&&roomState.hostConn.open){
-      roomState.hostConn.send(pkt);
-    }
-  }
-
-  function handleServerPacket(pkt){
-    if(!pkt)return;
-    if(pkt.type==='ROOM_CREATED'||pkt.type==='JOIN_SUCCESS'){
-      roomState.active=true;roomState.roomId=pkt.roomId;roomState.myId=pkt.userId;
-      roomState.isHost=(pkt.role==='host');roomState.isAdmin=(pkt.role==='host'||pkt.role==='admin');
-      roomState.users=pkt.users||[];
-      updateRoomButtonUI();renderRoomUsers();syncBrowserUrl();
-      flash(roomState.isHost?'Комната открыта: '+pkt.roomId:'Подключено к комнате');
-      if(pkt.type==='JOIN_SUCCESS'&&pkt.state){
-        if(pkt.state.rate)setRate(pkt.state.rate,false);
-        if(pkt.state.src&&normalizeSrc(pkt.state.src)&&normalizeSrc(pkt.state.src)!==currentSrc){
-          currentSrc=normalizeSrc(pkt.state.src);customTitle=pkt.state.title||'';syncBrowserUrl();
-          loadContext({src:currentSrc,resumeAt:pkt.state.time||0,skipResume:true});
-        }else if(pkt.state.time!==undefined){
-          if(activeIframe)sendIframeKodikCmd('seek',{seconds:pkt.state.time});else vid.currentTime=pkt.state.time;
-        }
-        roomState.ignoreNextSync=true;
-        if(pkt.state.paused){if(activeIframe){sendIframeKodikCmd('pause');iframePaused=true;updatePlayButtonVisual(true);}else vid.pause();}
-        else{if(activeIframe){sendIframeKodikCmd('play');iframePaused=false;updatePlayButtonVisual(false);}else vid.play().catch(function(){});}
-      }
-      return;
-    }
-    if(pkt.type==='JOIN_ERROR'){flash(pkt.reason||'Ошибка входа');leaveRoom();return;}
-    if(pkt.type==='USER_JOINED'||pkt.type==='USER_LEFT'||pkt.type==='USER_PROMOTED'||pkt.type==='USER_KICKED'){
-      roomState.users=pkt.users||[];
-      var selfU=roomState.users.find(function(u){return u.id===roomState.myId;});
-      if(selfU){roomState.isHost=(selfU.role==='host');roomState.isAdmin=(selfU.role==='admin'||selfU.role==='host');}
-      updateRoomButtonUI();renderRoomUsers();
-      if(pkt.type==='USER_JOINED'&&pkt.user)flash('Вошёл: '+pkt.user.name);
-      return;
-    }
-    if(pkt.type==='PLAY'){
-      roomState.ignoreNextSync=true;
-      if(activeIframe){if(pkt.time!==undefined)sendIframeKodikCmd('seek',{seconds:pkt.time});sendIframeKodikCmd('play');iframePaused=false;updatePlayButtonVisual(false);}
-      else{if(pkt.time!==undefined&&Math.abs((vid.currentTime||0)-pkt.time)>1.5)vid.currentTime=pkt.time;vid.play().catch(function(){});}
-      flash('Воспроизведение (хост)');return;
-    }
-    if(pkt.type==='PAUSE'){
-      roomState.ignoreNextSync=true;
-      if(activeIframe){if(pkt.time!==undefined)sendIframeKodikCmd('seek',{seconds:pkt.time});sendIframeKodikCmd('pause');iframePaused=true;updatePlayButtonVisual(true);}
-      else{if(pkt.time!==undefined)vid.currentTime=pkt.time;vid.pause();}
-      flash('Пауза (хост)');return;
-    }
-    if(pkt.type==='SEEK'&&pkt.time!==undefined){
-      if(activeIframe){sendIframeKodikCmd('seek',{seconds:pkt.time});iframeCurTime=pkt.time;updateTimelineProgress();}else vid.currentTime=pkt.time;
-      flash('Перемотка: '+fmtTime(pkt.time));return;
-    }
-    if(pkt.type==='RATE'&&pkt.rate!==undefined){setRate(pkt.rate,false);flash(fmtRate(pkt.rate));return;}
-    if(pkt.type==='CHANGE_EP'){
-      if(pkt.eIdx!==undefined)eIdx=pkt.eIdx;
-      if(pkt.vIdx!==undefined)vIdx=pkt.vIdx;
-      if(pkt.src)currentSrc=normalizeSrc(pkt.src);
-      syncBrowserUrl();loadCurrent(0);flash('Смена серии');return;
-    }
-    if(pkt.type==='LOAD_MEDIA'&&pkt.src){
-      var ns=normalizeSrc(pkt.src);if(!ns)return;
-      currentSrc=ns;customTitle=pkt.title||'';syncBrowserUrl();
-      loadContext({src:ns,skipResume:true});flash('Видео обновлено');return;
-    }
-    if(pkt.type==='HEARTBEAT'&&!roomState.isHost&&pkt.time!==undefined){
-      if(Math.abs(getCurrentVideoTime()-pkt.time)>2.0){
-        if(activeIframe)sendIframeKodikCmd('seek',{seconds:pkt.time});else vid.currentTime=pkt.time;
-      }
-      if(pkt.paused!==undefined&&pkt.paused!==isVideoPaused()){
-        roomState.ignoreNextSync=true;
-        if(pkt.paused){if(activeIframe){sendIframeKodikCmd('pause');iframePaused=true;updatePlayButtonVisual(true);}else vid.pause();}
-        else{if(activeIframe){sendIframeKodikCmd('play');iframePaused=false;updatePlayButtonVisual(false);}else vid.play().catch(function(){});}
-      }
-      return;
-    }
-    if(pkt.type==='KICKED'){leaveRoom();flash(pkt.reason||'Вы исключены');}
-  }
-
-  function startP2PHost(nick,pass){
-    if(!window.Peer){flash('Сервер комнат недоступен');return;}
-    var code='room-'+Math.random().toString(36).slice(2,8),myUid='u-'+Math.random().toString(36).slice(2,9);
-    var peer=new window.Peer('kp-wp-'+code);roomState.peer=peer;
-    peer.on('open',function(){handleServerPacket({type:'ROOM_CREATED',roomId:code,userId:myUid,role:'host',users:[{id:myUid,name:nick,role:'host'}]});});
-    peer.on('connection',function(conn){
-      conn.on('data',function(raw){
-        var pkt=typeof raw==='string'?JSON.parse(raw):raw;
-        if(pkt.type==='JOIN_ROOM'){
-          if(pass&&pass!==(pkt.pass||'')){conn.send({type:'JOIN_ERROR',reason:'Неверный пароль'});return;}
-          var gid='u-'+Math.random().toString(36).slice(2,9),gUser={id:gid,name:(pkt.name||'Гость').slice(0,24),role:'viewer'};
-          roomState.peerConns[gid]=conn;roomState.users.push(gUser);
-          updateRoomButtonUI();renderRoomUsers();
-          conn.send({type:'JOIN_SUCCESS',roomId:code,userId:gid,role:'viewer',users:roomState.users,state:{src:currentSrc,title:customTitle||titleLbl.textContent,time:getCurrentVideoTime(),paused:isVideoPaused(),rate:rate,vIdx:vIdx,eIdx:eIdx}});
-          Object.keys(roomState.peerConns).forEach(function(uid){if(uid!==gid&&roomState.peerConns[uid].open)roomState.peerConns[uid].send({type:'USER_JOINED',user:gUser,users:roomState.users});});
-          conn.on('close',function(){
-            delete roomState.peerConns[gid];roomState.users=roomState.users.filter(function(u){return u.id!==gid;});
-            updateRoomButtonUI();renderRoomUsers();
-            Object.keys(roomState.peerConns).forEach(function(uid){if(roomState.peerConns[uid].open)roomState.peerConns[uid].send({type:'USER_LEFT',userId:gid,users:roomState.users});});
-          });
-        }else if(pkt.type==='SYNC_ACTION'){
-          var gMetaId=null;
-          Object.keys(roomState.peerConns).forEach(function(uid){if(roomState.peerConns[uid]===conn)gMetaId=uid;});
-          var gMeta=roomState.users.find(function(u){return u.id===gMetaId;});
-          if(gMeta&&(gMeta.role==='admin'||gMeta.role==='host')){
-            var out=Object.assign({},pkt,{type:pkt.action});
-            handleServerPacket(out);
-            Object.keys(roomState.peerConns).forEach(function(uid){if(uid!==gMetaId&&roomState.peerConns[uid].open)roomState.peerConns[uid].send(out);});
-          }
-        }
-      });
-    });
-  }
-
-  function startP2PClient(targetRoomId,nick,pass){
-    if(!window.Peer){flash('Сервер комнат недоступен');return;}
-    var cleanId=targetRoomId.indexOf('room-')===0?targetRoomId:('room-'+targetRoomId);
-    var peer=new window.Peer();roomState.peer=peer;
-    peer.on('open',function(){
-      var conn=peer.connect('kp-wp-'+cleanId,{reliable:true});roomState.hostConn=conn;
-      conn.on('open',function(){conn.send({type:'JOIN_ROOM',roomId:cleanId,name:nick,pass:pass});});
-      conn.on('data',function(raw){handleServerPacket(typeof raw==='string'?JSON.parse(raw):raw);});
-      conn.on('close',function(){if(roomState.active){leaveRoom();flash('Связь с хостом закрыта');}});
-    });
-  }
-
-  function initHostServer(nick,pass){
-    leaveRoom();roomState.myNick=nick;roomState.roomPass=pass||'';
-    if(isStaticGithubHost&&!customApiBase){startP2PHost(nick,pass);return;}
-    var wsProto=window.location.protocol===PROTO_HTTPS?'wss:':'ws:',opened=false;
-    var wsUrl=customApiBase?(customApiBase.replace(/^http/i,'ws')+'/ws'):(wsProto+SLASH_PAIR+window.location.host+'/ws');
-    try{
-      var ws=new WebSocket(wsUrl);roomState.ws=ws;
-      ws.onopen=function(){opened=true;ws.send(JSON.stringify({type:'CREATE_ROOM',name:nick,pass:pass,time:getCurrentVideoTime(),paused:isVideoPaused(),rate:rate,src:currentSrc,title:customTitle||titleLbl.textContent,vIdx:vIdx,eIdx:eIdx}));};
-      ws.onmessage=function(e){try{handleServerPacket(JSON.parse(e.data));}catch(err){}};
-      ws.onerror=function(){if(!opened){roomState.ws=null;startP2PHost(nick,pass);}};
-      ws.onclose=function(){if(opened&&roomState.active){leaveRoom();flash('Соединение закрыто');}};
-    }catch(e){startP2PHost(nick,pass);}
-  }
-
-  function initClientConnection(targetRoomId,nick,pass){
-    leaveRoom();roomState.myNick=nick;roomState.roomPass=pass||'';
-    if(isStaticGithubHost&&!customApiBase){startP2PClient(targetRoomId,nick,pass);return;}
-    var wsProto=window.location.protocol===PROTO_HTTPS?'wss:':'ws:',opened=false;
-    var wsUrl=customApiBase?(customApiBase.replace(/^http/i,'ws')+'/ws'):(wsProto+SLASH_PAIR+window.location.host+'/ws');
-    try{
-      var ws=new WebSocket(wsUrl);roomState.ws=ws;
-      ws.onopen=function(){opened=true;ws.send(JSON.stringify({type:'JOIN_ROOM',roomId:targetRoomId,name:nick,pass:pass}));};
-      ws.onmessage=function(e){try{handleServerPacket(JSON.parse(e.data));}catch(err){}};
-      ws.onerror=function(){if(!opened){roomState.ws=null;startP2PClient(targetRoomId,nick,pass);}};
-      ws.onclose=function(){if(opened&&roomState.active){leaveRoom();flash('Связь потеряна');}};
-    }catch(e){startP2PClient(targetRoomId,nick,pass);}
-  }
-
-  setInterval(function(){if(roomState.active&&roomState.isHost)sendRoomAction('HEARTBEAT',{time:getCurrentVideoTime(),paused:isVideoPaused()});},3000);
-
-  function leaveRoom(){
-    roomState.active=false;roomState.isHost=false;roomState.isAdmin=false;
-    if(roomState.ws){try{roomState.ws.onclose=null;roomState.ws.close();}catch(e){}roomState.ws=null;}
-    if(roomState.hostConn){try{roomState.hostConn.close();}catch(e){}roomState.hostConn=null;}
-    Object.keys(roomState.peerConns).forEach(function(k){try{roomState.peerConns[k].close();}catch(e){}});
-    roomState.peerConns={};
-    if(roomState.peer){try{roomState.peer.destroy();}catch(e){}roomState.peer=null;}
-    roomState.users=[];updateRoomButtonUI();manageRoomModal.style.display='none';
   }
 
   roomBtn.onclick=function(e){
     e.stopPropagation();
-    if(!roomState.active){
-      createNickInput.value=localStorage.getItem('kp_last_nick')||'';createPassInput.value='';
-      createRoomErr.style.display='none';createRoomModal.style.display='flex';
-    }else{
-      manageModalTitle.textContent='Комната '+roomState.roomId;
-      roomLinkDisplay.textContent=getShareUrl(roomState.roomId);
-      renderRoomUsers();manageRoomModal.style.display='flex';
+    roomModal.style.display='flex';
+    if(roomState.active){roomCreateView.style.display='none';roomManageView.style.display='block';}
+    else{roomCreateView.style.display='block';roomManageView.style.display='none';}
+  };
+
+  closeRoomModalBtn.onclick=function(){roomModal.style.display='none';};
+
+  createRoomBtn.onclick=function(){
+    var nick=roomNickInput.value.trim()||'Хост';
+    roomModal.style.display='none';
+    initWatchParty({type:'CREATE_ROOM',name:nick,src:currentSrc,title:cleanTitle,time:vid.currentTime||0,paused:vid.paused,rate:rate});
+  };
+
+  joinRoomBtn.onclick=function(){
+    var targetId=joinRoomInput.value.trim();
+    var nick=roomNickInput.value.trim()||'Гость';
+    if(!targetId){flash('Укажите ID комнаты');return;}
+    roomModal.style.display='none';
+    initWatchParty({type:'JOIN_ROOM',roomId:targetId,name:nick});
+  };
+
+  copyLinkBtn.onclick=function(){
+    if(navigator.clipboard)navigator.clipboard.writeText(roomLinkInput.value).then(function(){flash('Ссылка скопирована');});
+  };
+
+  leaveRoomBtn.onclick=function(){
+    if(roomState.ws){roomState.ws.close();roomState.ws=null;}
+    roomState.active=false;roomBtn.classList.remove('room-active');roomBtnLbl.textContent='Комната';
+    roomModal.style.display='none';flash('Вы вышли из комнаты');
+  };
+
+  setInterval(function(){
+    if(roomState.active&&roomState.role==='host'){
+      sendRoomAction('HEARTBEAT',{time:vid.currentTime||0,paused:vid.paused});
     }
+  },3000);
+
+  vid.ontimeupdate=updateTimeline;
+  vid.onprogress=updateTimeline;
+  vid.onplay=function(){playIcon.innerHTML=PAUSE_SVG;wakeHud();};
+  vid.onpause=function(){playIcon.innerHTML=PLAY_SVG;document.body.classList.remove('hud-off');};
+  vid.onended=function(){if(ctxData&&eIdx+1<(ctxData.variants[vIdx].episodes||[]).length)loadEpisode(eIdx+1,0,true);};
+
+  window.onkeydown=function(e){
+    if(isLocked)return;
+    var tag=e.target&&e.target.tagName;
+    if(tag==='INPUT')return;
+    if(e.code==='Space'){e.preventDefault();togglePlay(true);}
+    else if(e.code==='ArrowRight'){e.preventDefault();vid.currentTime=(vid.currentTime||0)+10;flash('+10с');}
+    else if(e.code==='ArrowLeft'){e.preventDefault();vid.currentTime=Math.max(0,(vid.currentTime||0)-10);flash('-10с');}
+    else if(e.key===']'){e.preventDefault();applyRate(rate+0.25);flash(rate+'x');}
+    else if(e.key==='['){e.preventDefault();applyRate(rate-0.25);flash(rate+'x');}
   };
 
-  closeCreateRoomBtn.onclick=function(){createRoomModal.style.display='none';};
-  closeJoinRoomBtn.onclick=function(){joinRoomModal.style.display='none';};
-  closeManageRoomBtn.onclick=function(){manageRoomModal.style.display='none';};
-
-  switchToJoinBtn.onclick=function(){
-    createRoomModal.style.display='none';joinRoomIdInput.value='';
-    joinNickInput.value=createNickInput.value.trim()||(localStorage.getItem('kp_last_nick')||'');
-    joinRoomErr.style.display='none';joinRoomModal.style.display='flex';
-  };
-
-  startRoomSubmitBtn.onclick=function(){
-    var nick=createNickInput.value.trim(),pass=createPassInput.value.trim();
-    if(!nick){createRoomErr.style.display='block';return;}
-    createRoomErr.style.display='none';localStorage.setItem('kp_last_nick',nick);
-    createRoomModal.style.display='none';initHostServer(nick,pass);
-  };
-
-  connectRoomSubmitBtn.onclick=function(){
-    var targetId=joinRoomIdInput.value.trim(),nick=joinNickInput.value.trim(),pass=joinPassInput.value.trim();
-    if(!targetId||!nick){joinRoomErr.style.display='block';return;}
-    joinRoomErr.style.display='none';localStorage.setItem('kp_last_nick',nick);
-    joinRoomModal.style.display='none';initClientConnection(targetId,nick,pass);
-  };
-
-  copyRoomLinkBtn.onclick=function(){
-    var link=getShareUrl(roomState.roomId);
-    if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(link).then(function(){flash('Ссылка скопирована');});
-  };
-
-  leaveRoomBtn.onclick=function(){leaveRoom();};
-
-  var savedRate=parseFloat(localStorage.getItem('kodik_rate')||'1');
-  setRate(savedRate||1.0,false);
-
-  if(initialRoomId){
-    joinRoomIdInput.value=initialRoomId;
-    joinNickInput.value=localStorage.getItem('kp_last_nick')||'';
-    joinRoomModal.style.display='flex';
+  var qParams=new URLSearchParams(window.location.search);
+  var initialRoom=qParams.get('room');
+  if(initialRoom){
+    joinRoomInput.value=initialRoom;
+    roomModal.style.display='flex';
   }
 
-  if(currentSrc||initialGk){
-    loadContext({src:currentSrc,gk:initialGk,vi:initialVi});
-  }else{
-    titleLbl.textContent='Открыть ссылку Kodik';
-    openSourceModal();
-  }
+  loadContextByQuery('Клинок, рассекающий демонов');
   wakeHud();
 })();
 </script>
